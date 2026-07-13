@@ -72,7 +72,7 @@ export default function ProductList() {
       try {
         // 서버 API를 통해 데이터를 가져옴
         const data = await productApi.fetchCafe24Products();
-        setProducts(data ?? []);
+        setProducts(data.products ?? []);
       } catch (error) {
         setLoadError("상품 목록을 불러오는 중 오류가 발생했습니다.");
       } finally {
