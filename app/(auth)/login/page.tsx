@@ -31,7 +31,8 @@ export default function LoginPage() {
   const [serverStatus, setServerStatus] = useState<ServerStatus>("checking");
   const [isNavigating, setIsNavigating] = useState(false);
 
-  const CLIENT_ID = process.env.CAFE24_CLIENT_ID; // 환경변수 설정 필수!
+  // const CLIENT_ID = process.env.CAFE24_CLIENT_ID;
+  const CLIENT_ID = "eaDdJjj8HiwN1lMOyf0ECL";
   const REDIRECT_URI = process.env.CAFE24_REDIRECT_URI;
   const MALL_ID = "rkdenrjd"; // 카페24 관리자 페이지 주소창에 보이는 그 아이디
 
