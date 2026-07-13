@@ -3,9 +3,7 @@ import { cafe24 } from "@/lib/api/cafe24";
 
 export async function GET() {
   try {
-    // 딱 한 줄이면 끝!
-    // const products = await cafe24.getProducts("rkdenrjd");
-    const products = await cafe24.getProducts(process.env.CAFE24_MALL_ID!);
+    const products = await cafe24.getProducts();
     return NextResponse.json(products);
   } catch (err) {
     console.error("카페24 상품 조회 실패:", err);

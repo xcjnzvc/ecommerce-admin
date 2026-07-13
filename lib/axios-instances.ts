@@ -23,13 +23,12 @@ async function getValidAccessToken() {
     throw new Error("저장된 카페24 토큰이 없습니다.");
   }
 
-  const isExpired = new Date(data.expires_at).getTime() < Date.now() + 60_000; // 1분 여유
+  const isExpired = new Date(data.expires_at).getTime() < Date.now() + 60_000;
 
   if (!isExpired) {
-    return data.access_token;
+    return { token: data.access_token, mallId: data.mall_id };
   }
 
-  // 만료됨 → refresh_token으로 재발급
   const params = new URLSearchParams();
   params.append("grant_type", "refresh_token");
   params.append("refresh_token", data.refresh_token);
@@ -61,11 +60,12 @@ async function getValidAccessToken() {
     })
     .eq("mall_id", data.mall_id);
 
-  return access_token;
+  return { token: access_token, mallId: data.mall_id };
 }
 
 cafe24Api.interceptors.request.use(async (config) => {
-  const token = await getValidAccessToken();
+  const { token, mallId } = await getValidAccessToken();
   config.headers.Authorization = `Bearer ${token}`;
+  config.baseURL = `https://${mallId}.cafe24api.com`;
   return config;
 });
