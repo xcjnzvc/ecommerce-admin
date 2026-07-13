@@ -44,15 +44,18 @@ export async function GET(req: NextRequest) {
 
     const { access_token, refresh_token, expires_in } = tokenResponse.data;
 
-    // 3. 만료 시간 계산 (현재 시간 + expires_in 초)
-    const expiresAt = new Date(Date.now() + expires_in * 1000).toISOString();
+    // 3. 만료 시간 계산 (확실하게 숫자형으로 변환)
+    const expiresInSeconds = Number(expires_in); // 문자열로 올 경우를 대비해 숫자로 변환
+    const expiresAt = new Date(
+      Date.now() + expiresInSeconds * 1000,
+    ).toISOString();
 
-    // 4. Supabase DB에 토큰 정보 저장 (upsert: 동일 mall_id 있으면 업데이트)
+    // 4. Supabase DB에 저장
     const { error: dbError } = await supabase.from("cafe24_tokens").upsert({
       mall_id: mallId,
       access_token,
       refresh_token,
-      expires_at: expiresAt,
+      expires_at: expiresAt, // ISO 형식(YYYY-MM-DDTHH:MM:SSZ)으로 저장
     });
 
     if (dbError) throw new Error("DB 저장 실패: " + dbError.message);
