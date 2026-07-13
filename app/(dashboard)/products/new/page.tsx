@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ChevronDown, ChevronUp, Save, Upload, Wand2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/supabase";
+import { createClient } from "@/lib/supabase/client";
 import {
   foodProductSchema,
   type FoodProductFormInput,

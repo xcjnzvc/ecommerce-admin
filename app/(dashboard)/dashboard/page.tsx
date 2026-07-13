@@ -8,6 +8,7 @@ import BestSellers from "./_components/BestSellers";
 import ReviewStats from "./_components/ReviewStats";
 import InfluencerCampaign from "./_components/InfluencerCampaign";
 import LatestOrders from "./_components/LatestOrders";
+import { createClient } from "@/lib/supabase/server";
 
 const salesData: SalesCardTypes[] = [
   {
@@ -36,14 +37,19 @@ const salesData: SalesCardTypes[] = [
   },
 ] as const;
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   return (
     // 전체 레이아웃을 grid로 설정 (gap으로 세로 간격 자동 조절)
     <div className="grid grid-cols-1 gap-[20px]">
       {/* 1. 헤더 영역 */}
       <div className="mb-[20px]">
         <h1 className="text-[24px] font-bold text-gray-800">대시보드</h1>
-        <p className="text-gray-500 mt-1">
+        <div className="text-gray-500 mt-1">{user?.email}님 환영합니다</div>
+        <p className="text-gray-500">
           실시간 매출과 운영 지표를 한 눈에 확인하세요
         </p>
       </div>

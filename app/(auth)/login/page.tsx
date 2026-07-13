@@ -9,11 +9,9 @@ import { useForm } from "react-hook-form";
 import Button from "@/components/Button";
 import { ServerStatus } from "@/types/auth";
 import ServerStatusBanner from "../_components/ServerStatusBanner";
-
-// import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { createClient } from "@/lib/supabase/supabase";
+import { createClient } from "@/lib/supabase/client";
 
 const ping = async (setServerStatus: (status: ServerStatus) => void) => {
   setServerStatus("checking");
