@@ -8,12 +8,6 @@ export async function GET(req: NextRequest) {
     const rawMallId = searchParams.get("mall_id");
     const mallId = rawMallId || "rkdenrjd";
 
-    if (rawMallId) {
-      console.log(`[인증 성공] 전달받은 mall_id 사용: ${rawMallId}`);
-    } else {
-      console.log(`[인증 주의] mall_id가 없어 기본값 사용: ${mallId}`);
-    }
-
     if (!code) {
       return NextResponse.json(
         { error: "인증 코드가 없습니다." },
@@ -21,12 +15,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // 1. 토큰 발급 요청
     const params = new URLSearchParams();
     params.append("grant_type", "authorization_code");
     params.append("code", code);
     params.append("redirect_uri", process.env.CAFE24_REDIRECT_URI || "");
 
-    const response = await axios.post(
+    const tokenResponse = await axios.post(
       `https://${mallId}.cafe24api.com/api/v2/oauth/token`,
       params,
       {
@@ -41,17 +36,35 @@ export async function GET(req: NextRequest) {
       },
     );
 
-    const { access_token } = response.data;
-    return NextResponse.json({ message: "토큰 발급 성공!", access_token });
+    const { access_token } = tokenResponse.data;
+    console.log("토큰 발급 성공!");
+
+    // 2. 발급받은 토큰으로 상품 목록 조회
+    const productResponse = await axios.get(
+      `https://${mallId}.cafe24api.com/api/v2/admin/products`,
+      {
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    console.log("상품 목록 불러오기 성공");
+
+    return NextResponse.json({
+      message: "토큰 발급 및 상품 목록 조회 성공!",
+      access_token,
+      products: productResponse.data,
+    });
   } catch (error: unknown) {
-    // AxiosError를 사용하여 안전하게 response에 접근
     const axiosError = error as AxiosError;
     const errorData = axiosError.response?.data || axiosError.message;
 
-    console.error("토큰 발급 에러 상세:", errorData);
+    console.error("API 에러 상세:", errorData);
 
     return NextResponse.json(
-      { error: "토큰 발급 실패", details: errorData },
+      { error: "API 요청 실패", details: errorData },
       { status: 500 },
     );
   }
