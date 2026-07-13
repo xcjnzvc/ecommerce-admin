@@ -1,6 +1,7 @@
 import axios from "axios";
 import { createClient } from "@supabase/supabase-js";
 
+// baseURL을 아예 제거하여 URL 오염을 방지합니다.
 export const cafe24Api = axios.create({
   headers: {
     "Content-Type": "application/json",
@@ -19,16 +20,15 @@ async function getValidAccessToken() {
     .select("access_token, refresh_token, expires_at, mall_id")
     .single();
 
-  if (error || !data) {
-    throw new Error("저장된 카페24 토큰이 없습니다.");
-  }
+  if (error || !data) throw new Error("저장된 카페24 토큰이 없습니다.");
 
   const isExpired = new Date(data.expires_at).getTime() < Date.now() + 60_000;
 
   if (!isExpired) {
-    return { token: data.access_token, mallId: data.mall_id };
+    return data.access_token;
   }
 
+  // 만료 시 토큰 갱신 로직
   const params = new URLSearchParams();
   params.append("grant_type", "refresh_token");
   params.append("refresh_token", data.refresh_token);
@@ -49,23 +49,22 @@ async function getValidAccessToken() {
   );
 
   const { access_token, refresh_token, expires_in } = response.data;
-  const newExpiresAt = new Date(Date.now() + Number(expires_in) * 1000);
-
   await supabase
     .from("cafe24_tokens")
     .update({
       access_token,
       refresh_token,
-      expires_at: newExpiresAt.toISOString(),
+      expires_at: new Date(
+        Date.now() + Number(expires_in) * 1000,
+      ).toISOString(),
     })
     .eq("mall_id", data.mall_id);
 
-  return { token: access_token, mallId: data.mall_id };
+  return access_token;
 }
 
 cafe24Api.interceptors.request.use(async (config) => {
-  const { token, mallId } = await getValidAccessToken();
+  const token = await getValidAccessToken();
   config.headers.Authorization = `Bearer ${token}`;
-  config.baseURL = `https://${mallId}.cafe24api.com`;
   return config;
 });
