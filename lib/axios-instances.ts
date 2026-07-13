@@ -9,6 +9,11 @@ export const cafe24Api = axios.create({
   },
 });
 
+// 환경 변수 검증 (디버깅용)
+if (!process.env.CAFE24_CLIENT_ID) {
+  console.error("CRITICAL ERROR: CAFE24_CLIENT_ID is not defined!");
+}
+
 async function getValidAccessToken() {
   const supabase = createClient(
     process.env.SUPABASE_URL!,
