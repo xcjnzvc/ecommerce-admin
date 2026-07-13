@@ -1,3 +1,4 @@
+import axios from "axios";
 import { cafe24Api } from "../axios-instances";
 import { createClient } from "@supabase/supabase-js";
 
@@ -19,7 +20,14 @@ export const cafe24 = {
     const url = `https://${data.mall_id}.cafe24api.com/api/v2/admin/products`;
 
     // 3. 전체 URL을 그대로 전달
-    const res = await cafe24Api.get(url);
-    return res.data;
+    try {
+      const res = await cafe24Api.get(url);
+      return res.data;
+    } catch (e) {
+      if (axios.isAxiosError(e)) {
+        console.log("response:", JSON.stringify(e.response?.data, null, 2));
+      }
+      throw e;
+    }
   },
 };
