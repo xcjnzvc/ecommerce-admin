@@ -34,7 +34,7 @@ export default function LoginPage() {
   const [isNavigating, setIsNavigating] = useState(false);
 
   const CLIENT_ID = process.env.CAFE24_CLIENT_ID; // 환경변수 설정 필수!
-  const REDIRECT_URI = process.env.NEXT_PUBLIC_CAFE24_REDIRECT_URI;
+  const REDIRECT_URI = process.env.CAFE24_REDIRECT_URI;
   const MALL_ID = "rkdenrjd"; // 카페24 관리자 페이지 주소창에 보이는 그 아이디
 
   const cafe24LoginUrl = `https://${MALL_ID}.cafe24api.com/api/v2/oauth/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI || "")}&scope=mall.read_product,mall.write_product`;
