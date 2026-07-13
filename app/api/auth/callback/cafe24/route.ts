@@ -24,10 +24,7 @@ export async function GET(req: NextRequest) {
     const params = new URLSearchParams();
     params.append("grant_type", "authorization_code");
     params.append("code", code);
-    params.append(
-      "redirect_uri",
-      process.env.NEXT_PUBLIC_CAFE24_REDIRECT_URI || "",
-    );
+    params.append("redirect_uri", process.env.CAFE24_REDIRECT_URI || "");
 
     const response = await axios.post(
       `https://${mallId}.cafe24api.com/api/v2/oauth/token`,
