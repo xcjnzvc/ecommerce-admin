@@ -25,8 +25,9 @@ export const cafe24 = {
       return res.data;
     } catch (e) {
       if (axios.isAxiosError(e)) {
-        console.log("response:", JSON.stringify(e.response?.data, null, 2));
+        throw new Error(JSON.stringify(e.response?.data));
       }
+
       throw e;
     }
   },
