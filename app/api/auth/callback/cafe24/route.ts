@@ -44,18 +44,28 @@ export async function GET(req: NextRequest) {
 
     const { access_token, refresh_token, expires_in } = tokenResponse.data;
 
-    // 3. 만료 시간 계산 (확실하게 숫자형으로 변환)
-    const expiresInSeconds = Number(expires_in); // 문자열로 올 경우를 대비해 숫자로 변환
-    const expiresAt = new Date(
-      Date.now() + expiresInSeconds * 1000,
-    ).toISOString();
+    // 로그 추가: 카페24에서 주는 값이 정확히 무엇인지 확인
+    console.log("카페24 응답 expires_in 값:", expires_in);
+    console.log("타입 확인:", typeof expires_in);
 
-    // 4. Supabase DB에 저장
+    // 만료 시간 계산
+    const expiresInSeconds = Number(expires_in);
+    const calculatedDate = new Date(Date.now() + expiresInSeconds * 1000);
+
+    // 로그 추가: 날짜 계산이 제대로 되었는지 확인
+    console.log("계산된 날짜 객체:", calculatedDate);
+    console.log("ISO 변환 결과:", calculatedDate.toISOString());
+
+    if (isNaN(calculatedDate.getTime())) {
+      throw new Error("날짜 계산 결과가 올바르지 않습니다.");
+    }
+
+    // Supabase DB에 저장
     const { error: dbError } = await supabase.from("cafe24_tokens").upsert({
       mall_id: mallId,
       access_token,
       refresh_token,
-      expires_at: expiresAt, // ISO 형식(YYYY-MM-DDTHH:MM:SSZ)으로 저장
+      expires_at: calculatedDate.toISOString(),
     });
 
     if (dbError) throw new Error("DB 저장 실패: " + dbError.message);
