@@ -44,21 +44,20 @@ export async function GET(req: NextRequest) {
 
     const { access_token, refresh_token, expires_in } = tokenResponse.data;
 
-    // 로그 추가: 카페24에서 주는 값이 정확히 무엇인지 확인
-    console.log("카페24 응답 expires_in 값:", expires_in);
-    console.log("타입 확인:", typeof expires_in);
+    // --- 수정된 부분 ---
+    console.log("전체 응답 데이터:", JSON.stringify(tokenResponse.data));
 
-    // 만료 시간 계산
-    const expiresInSeconds = Number(expires_in);
-    const calculatedDate = new Date(Date.now() + expiresInSeconds * 1000);
+    // 만료 시간 보정 (없으면 기본값 1시간)
+    const validExpiresIn = expires_in ? Number(expires_in) : 3600;
 
-    // 로그 추가: 날짜 계산이 제대로 되었는지 확인
-    console.log("계산된 날짜 객체:", calculatedDate);
-    console.log("ISO 변환 결과:", calculatedDate.toISOString());
+    // 현재 시간으로부터 계산
+    const calculatedDate = new Date(Date.now() + validExpiresIn * 1000);
 
     if (isNaN(calculatedDate.getTime())) {
-      throw new Error("날짜 계산 결과가 올바르지 않습니다.");
+      console.error("날짜 계산 실패! 입력값:", expires_in);
+      return NextResponse.json({ error: "날짜 계산 실패" }, { status: 500 });
     }
+    // ------------------
 
     // Supabase DB에 저장
     const { error: dbError } = await supabase.from("cafe24_tokens").upsert({
