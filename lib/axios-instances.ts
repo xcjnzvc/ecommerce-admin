@@ -53,15 +53,23 @@ async function getValidAccessToken() {
     },
   );
 
+  console.log("리프레시 응답 전체:", JSON.stringify(response.data));
+
   const { access_token, refresh_token, expires_in } = response.data;
+
+  const validExpiresIn = expires_in ? Number(expires_in) : 3600; // 기본 1시간
+  const newExpiresAt = new Date(Date.now() + validExpiresIn * 1000);
+
+  if (isNaN(newExpiresAt.getTime())) {
+    throw new Error("토큰 갱신 후 만료시간 계산 실패");
+  }
+
   await supabase
     .from("cafe24_tokens")
     .update({
       access_token,
       refresh_token,
-      expires_at: new Date(
-        Date.now() + Number(expires_in) * 1000,
-      ).toISOString(),
+      expires_at: newExpiresAt.toISOString(),
     })
     .eq("mall_id", data.mall_id);
 
