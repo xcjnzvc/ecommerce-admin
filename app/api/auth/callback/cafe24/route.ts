@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import axios, { AxiosError } from "axios";
 import { createClient } from "@supabase/supabase-js";
 
-//카페24 OAuth 연결 시 "최초 1회"
-
 // 1. Supabase 클라이언트 초기화
 const supabase = createClient(
-  process.env.SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
