@@ -6,7 +6,7 @@ export const cafe24 = {
   getProducts: async () => {
     // 1. Supabase에서 mall_id를 직접 조회
     const supabase = createClient(
-      process.env.SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
     const { data } = await supabase
