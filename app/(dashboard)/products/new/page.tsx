@@ -108,8 +108,6 @@ export default function FoodProductNewPage() {
     }
   };
 
-  // 실제 제출: Supabase products 테이블에 저장합니다.
-  // 폼 필드명(camelCase)과 DB 컬럼명(snake_case)이 다르므로 변환해서 보냅니다.
   const onSubmit = async (
     data: FoodProductFormValues,
     submitStatus: "임시저장" | "판매중" = "판매중",
@@ -124,7 +122,7 @@ export default function FoodProductNewPage() {
       cost: data.cost,
       stock: data.stock,
       description: data.description,
-      images: [], // Storage 연동은 다음 단계
+      images: [],
       options: data.options,
       legal_info: data.legalInfo,
       channels: data.channels,
@@ -132,17 +130,71 @@ export default function FoodProductNewPage() {
       status: submitStatus,
     };
 
-    const { error } = await supabase.from("products").insert(payload);
-
-    setIsSaving(false);
+    // 1. Supabase에 먼저 저장
+    const { data: inserted, error } = await supabase
+      .from("products")
+      .insert(payload)
+      .select()
+      .single();
 
     if (error) {
+      setIsSaving(false);
       console.error("저장 실패:", error);
       setSaveError(error.message);
       return;
     }
 
-    router.push("/products"); // 저장 성공하면 리스트 페이지로 이동
+    // 2. 카페24 채널 선택 시, 카페24 API로 실제 등록
+    if (data.channels.cafe24) {
+      try {
+        const res = await fetch("/api/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            product_name: data.name,
+            price: data.price,
+            supply_price: data.cost,
+            display:
+              data.channelData.cafe24?.displayStatus === "진열함" ? "T" : "F",
+            selling:
+              data.channelData.cafe24?.sellingStatus === "판매함" ? "T" : "F",
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "카페24 등록 실패");
+        }
+
+        const cafe24Result = await res.json();
+        const productNo = cafe24Result?.product?.product_no;
+
+        // 3. 카페24 등록 성공 시, product_no를 다시 Supabase에 업데이트
+        if (productNo) {
+          await supabase
+            .from("products")
+            .update({
+              cafe24_product_no: productNo,
+              cafe24_synced_at: new Date().toISOString(),
+            })
+            .eq("id", inserted.id);
+        }
+      } catch (cafe24Error) {
+        setIsSaving(false);
+        // Supabase 저장은 성공했지만 카페24 등록은 실패한 상태
+        setSaveError(
+          `우리 DB에는 저장됐지만 카페24 등록에 실패했어요: ${
+            cafe24Error instanceof Error
+              ? cafe24Error.message
+              : "알 수 없는 오류"
+          }`,
+        );
+        return;
+      }
+    }
+
+    setIsSaving(false);
+    router.push("/products");
   };
 
   // 쿠팡/카페24 미리보기용으로 필요한 값만 추려서 보여줍니다.
