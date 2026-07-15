@@ -35,7 +35,7 @@ export default function LoginPage() {
   const REDIRECT_URI = process.env.CAFE24_REDIRECT_URI;
   const MALL_ID = "rkdenrjd"; // 카페24 관리자 페이지 주소창에 보이는 그 아이디
 
-  const cafe24LoginUrl = `https://${MALL_ID}.cafe24api.com/api/v2/oauth/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI || "")}&scope=mall.read_product,mall.write_product`;
+  const cafe24LoginUrl = `https://${MALL_ID}.cafe24api.com/api/v2/oauth/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI || "")}&scope=mall.read_product,mall.write_product,mall.read_category,mall.write_category`;
 
   const {
     register,
