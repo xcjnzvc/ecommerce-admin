@@ -3,12 +3,10 @@ import { cafe24 } from "@/lib/api/cafe24";
 
 export async function GET() {
   try {
-    const categories = await cafe24.getCategories();
-    return NextResponse.json(categories);
+    const result = await cafe24.getCategories();
+    return NextResponse.json({ categories: result.categories });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
-    );
+    console.error("카테고리 조회 실패:", err);
+    return NextResponse.json({ error: "카테고리 조회 실패" }, { status: 500 });
   }
 }

@@ -1,3 +1,4 @@
+import { buildLegalInfoHtml } from "@/lib/build-legal-info-html";
 import { z } from "zod";
 
 // ────────────────────────────────────────────────
@@ -82,7 +83,6 @@ const coupangDataSchema = z.object({
 });
 
 const cafe24DataSchema = z.object({
-  displayCategory: z.string().min(1, "진열 카테고리를 입력하세요"),
   displayStatus: z.enum(["진열함", "진열안함"]).default("진열함"),
   sellingStatus: z.enum(["판매함", "판매안함"]).default("판매함"),
   shippingPolicy: z.string().min(1, "배송 정책을 입력하세요"),
@@ -96,11 +96,14 @@ export const foodProductSchema = z
   .object({
     // 1. 기본 정보
     name: z.string().min(1, "상품명을 입력하세요"),
-    category: z.literal("식품"),
+    categoryNos: z
+      .array(z.coerce.number())
+      .min(1, "상품이 노출될 분류를 최소 1개 선택하세요"),
     price: z.coerce.number().min(0, "판매가를 입력하세요"),
     cost: z.coerce.number().min(0).default(0),
     stock: z.coerce.number().min(0, "재고수량을 입력하세요"),
     description: z.string().optional().default(""),
+    images: z.array(z.string()).default([]),
 
     // 2. 옵션
     options: z.array(optionSchema).default([]),

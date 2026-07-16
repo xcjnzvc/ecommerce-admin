@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { productApi } from "@/lib/api/products";
+import { useRouter } from "next/navigation";
 
 interface Product {
   product_no: number;
@@ -29,6 +30,7 @@ interface Product {
   selling: "T" | "F";
   sold_out: "T" | "F";
   created_date: string;
+  list_image?: string;
 }
 
 const getProductStatus = (product: Product): string => {
@@ -51,6 +53,7 @@ const getStatusStyle = (status: string) => {
 };
 
 export default function ProductList() {
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -162,14 +165,33 @@ export default function ProductList() {
     }
   };
 
-  // 대량 삭제 실제 수행 핸들러
-  const handleBulkDelete = () => {
-    setProducts(
-      products.filter((p) => !selectedProductIds.includes(p.product_no)),
-    );
-    setSelectedProductIds([]);
-    setIsDeleteModalOpen(false);
-    setToastMessage("선택하신 상품이 목록에서 정상 삭제되었습니다.");
+  // 삭제
+  const handleBulkDelete = async () => {
+    try {
+      // API 라우트 규격이 `/api/products/[productNo]`이므로 각 ID별로 DELETE 요청을 보냅니다.
+      const deletePromises = selectedProductIds.map((id) =>
+        fetch(`/api/products/${id}`, { method: "DELETE" }),
+      );
+
+      const results = await Promise.all(deletePromises);
+      const failedDeletes = results.filter((res) => !res.ok);
+
+      if (failedDeletes.length > 0) {
+        throw new Error(`${failedDeletes.length}개의 상품 삭제 실패`);
+      }
+
+      // 디비 삭제 성공 시에만 State에서 제거
+      setProducts((prev) =>
+        prev.filter((p) => !selectedProductIds.includes(p.product_no)),
+      );
+      setToastMessage("선택하신 상품이 목록에서 정상 삭제되었습니다.");
+    } catch (error) {
+      setToastMessage("일부 상품 삭제 중 오류가 발생했습니다.");
+      console.error(error);
+    } finally {
+      setSelectedProductIds([]);
+      setIsDeleteModalOpen(false);
+    }
   };
 
   return (
@@ -375,7 +397,7 @@ export default function ProductList() {
                       <td className="px-8 py-8.5 text-left">
                         <div className="flex items-center gap-4.5 max-w-md">
                           {/* 둥근 사각형 코너(rounded-xl)를 가진 스퀘어 상품 썸네일 플레이스홀더 */}
-                          <div className="w-13 h-13 rounded-xl bg-gray-50 border border-gray-100/80 flex items-center justify-center text-xl shadow-inner shrink-0 group-hover:scale-105 transition-transform">
+                          {/* <div className="w-13 h-13 rounded-xl bg-gray-50 border border-gray-100/80 flex items-center justify-center text-xl shadow-inner shrink-0 group-hover:scale-105 transition-transform">
                             <svg
                               className="w-6 h-6 text-gray-300"
                               fill="none"
@@ -398,6 +420,38 @@ export default function ProductList() {
                                 strokeLinejoin="round"
                               />
                             </svg>
+                          </div> */}
+                          <div className="w-13 h-13 rounded-xl bg-gray-50 border border-gray-100/80 flex items-center justify-center overflow-hidden shrink-0 group-hover:scale-105 transition-transform">
+                            {product.list_image ? (
+                              // 🚀 이미지가 있다면 보여주고, 없다면 기존 SVG(플레이스홀더) 출력
+                              <img
+                                src={product.list_image}
+                                alt={product.product_name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <svg
+                                className="w-6 h-6 text-gray-300"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <rect
+                                  x="3"
+                                  y="3"
+                                  width="18"
+                                  height="18"
+                                  rx="3"
+                                  ry="3"
+                                />
+                                <circle cx="8.5" cy="8.5" r="1.5" />
+                                <path
+                                  d="M21 15l-5-5L5 21"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            )}
                           </div>
                           <div className="flex flex-col text-left">
                             <span className="font-bold text-gray-900 group-hover:text-[#143617] transition-colors leading-snug text-[14px]">
@@ -463,8 +517,8 @@ export default function ProductList() {
                               <button
                                 onClick={() => {
                                   setActiveDropdownId(null);
-                                  setToastMessage(
-                                    `'${product.product_name}' 정보를 수정합니다.`,
+                                  router.push(
+                                    `/products/${product.product_no}/edit`,
                                   );
                                 }}
                                 className="w-full text-left px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-[#143617] transition-all"
@@ -472,17 +526,30 @@ export default function ProductList() {
                                 수정
                               </button>
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   setActiveDropdownId(null);
-                                  setProducts(
-                                    products.filter(
-                                      (p) =>
-                                        p.product_no !== product.product_no,
-                                    ),
-                                  );
-                                  setToastMessage(
-                                    "선택한 상품이 정상적으로 삭제되었습니다.",
-                                  );
+                                  try {
+                                    const res = await fetch(
+                                      `/api/products/${product.product_no}`,
+                                      {
+                                        method: "DELETE",
+                                      },
+                                    );
+                                    if (!res.ok) throw new Error();
+                                    setProducts(
+                                      products.filter(
+                                        (p) =>
+                                          p.product_no !== product.product_no,
+                                      ),
+                                    );
+                                    setToastMessage(
+                                      "선택한 상품이 정상적으로 삭제되었습니다.",
+                                    );
+                                  } catch {
+                                    setToastMessage(
+                                      "삭제 중 오류가 발생했습니다.",
+                                    );
+                                  }
                                 }}
                                 className="w-full text-left px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition-all"
                               >
