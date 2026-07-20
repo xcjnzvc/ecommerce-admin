@@ -117,13 +117,13 @@ export default function LoginPage() {
             />
           </div>
         </form>
-        <div className="mt-10 pt-10 border-t">
+        {/* <div className="mt-10 pt-10 border-t">
           <a href={cafe24LoginUrl}>
             <button type="button" className="...">
               카페24와 내 어드민 연결하기 (최초 1회)
             </button>
           </a>
-        </div>
+        </div> */}
       </div>
       <FloatingMenu />
     </div>
