@@ -33,6 +33,13 @@ export interface ProductInput {
   [key: string]: ProductValue;
 }
 
+import type {
+  Cafe24OrderListItem,
+  Cafe24OrderItem,
+  Cafe24ProductDetail,
+  InventoryDateType,
+} from "@/types/cafe24";
+
 export const cafe24 = {
   // 1. 상품 리스트 조회
   getProducts: async () => {
@@ -225,5 +232,89 @@ export const cafe24 = {
       },
     );
     return res.data;
+  },
+
+  // 10. 주문 목록 조회 (재고 동기화용 - 특정 date_type 기준)
+  getOrders: async (params: {
+    startDate: string;
+    endDate: string;
+    dateType: InventoryDateType;
+  }): Promise<Cafe24OrderListItem[]> => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const { data } = await supabase
+      .from("cafe24_tokens")
+      .select("mall_id")
+      .single();
+    if (!data?.mall_id) throw new Error("mall_id를 찾을 수 없습니다.");
+
+    const url = `https://${data.mall_id}.cafe24api.com/api/v2/admin/orders`;
+
+    try {
+      const res = await cafe24Api.get(url, {
+        params: {
+          start_date: params.startDate,
+          end_date: params.endDate,
+          date_type: params.dateType,
+          limit: 500,
+        },
+      });
+      return res.data.orders ?? [];
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        console.error(
+          `[${params.dateType}] 카페24 주문 조회 실패:`,
+          err.response?.status,
+          JSON.stringify(err.response?.data),
+        );
+      } else {
+        console.error(`[${params.dateType}] 알 수 없는 오류:`, err);
+      }
+      throw err; // sync-inventory.ts의 catch에서 계속 처리하도록 그대로 던짐
+    }
+  },
+
+  // 11. 특정 주문의 품주(items) 조회 - product_no, quantity 추출용
+  getOrderItems: async (orderId: string): Promise<Cafe24OrderItem[]> => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const { data } = await supabase
+      .from("cafe24_tokens")
+      .select("mall_id")
+      .single();
+    if (!data?.mall_id) throw new Error("mall_id를 찾을 수 없습니다.");
+
+    const url = `https://${data.mall_id}.cafe24api.com/api/v2/admin/orders/${orderId}/items`;
+    const res = await cafe24Api.get(url);
+    return res.data.items ?? [];
+  },
+
+  // 12. 상품 상세 조회 (재고 진짜 최신값 확보용) - 기존 getProducts와 별개로,
+  //     단건 조회는 fields를 quantity 포함해서 명시적으로 요청
+  getProductDetail: async (
+    productNo: number,
+  ): Promise<Cafe24ProductDetail | null> => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const { data } = await supabase
+      .from("cafe24_tokens")
+      .select("mall_id")
+      .single();
+    if (!data?.mall_id) throw new Error("mall_id를 찾을 수 없습니다.");
+
+    const url = `https://${data.mall_id}.cafe24api.com/api/v2/admin/products/${productNo}`;
+    try {
+      const res = await cafe24Api.get(url);
+      return res.data.product ?? null;
+    } catch (error) {
+      console.error(`상품(${productNo}) 상세 조회 실패:`, error);
+      return null;
+    }
   },
 };

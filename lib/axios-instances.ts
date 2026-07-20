@@ -1,5 +1,6 @@
 // lib/axios-instances.ts
 import axios from "axios";
+import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
 
 export const cafe24Api = axios.create({
@@ -89,6 +90,11 @@ async function getValidAccessToken(): Promise<string> {
 
       console.log("=== 리프레시 성공 응답 ===");
       console.log(JSON.stringify(response.data));
+      console.log("=== 부여된 스코프 ===", response.data.scopes);
+      fs.writeFileSync(
+        "/tmp/cafe24-scopes.json",
+        JSON.stringify(response.data.scopes, null, 2),
+      );
 
       const { access_token, refresh_token, expires_in } = response.data;
       const validExpiresIn = expires_in ? Number(expires_in) : 3600;
