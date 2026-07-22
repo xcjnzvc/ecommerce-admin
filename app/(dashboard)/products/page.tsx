@@ -7,45 +7,36 @@ import {
   Download,
   Package,
   CheckCircle2,
-  AlertCircle,
-  HelpCircle,
+  FileEdit,
   Filter,
   ArrowUpDown,
   MoreHorizontal,
   Copy,
   Trash2,
   X,
+  AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { productApi } from "@/lib/api/products";
+import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 interface Product {
-  product_no: number;
-  product_code: string;
-  product_name: string;
-  price: string;
-  supply_price: string;
-  display: "T" | "F";
-  selling: "T" | "F";
-  sold_out: "T" | "F";
-  created_date: string;
-  list_image?: string;
+  id: string;
+  name: string;
+  price: number;
+  stock: number; // 추가
+  status: "임시저장" | "판매중";
+  created_at: string;
+  images: string[] | null;
+  cafe24_product_no: number | null;
+  shopify_product_id: number | null;
 }
-
-const getProductStatus = (product: Product): string => {
-  if (product.sold_out === "T") return "품절";
-  if (product.selling === "F") return "판매중지";
-  return "판매중";
-};
 
 const getStatusStyle = (status: string) => {
   switch (status) {
     case "판매중":
       return "bg-[#e8f8f0] text-[#0f8a5f]";
-    case "품절":
-      return "bg-[#ffebee] text-[#c62828]";
-    case "판매중지":
+    case "임시저장":
       return "bg-[#f5f5f5] text-[#616161]";
     default:
       return "bg-[#f5f5f5] text-[#616161]";
@@ -58,15 +49,12 @@ export default function ProductList() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // UI 검색 및 상태 필터링용 로컬 스테이트
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("전체");
 
-  // 테이블 내 선택용 스테이트
-  const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
-  const [activeDropdownId, setActiveDropdownId] = useState<number | null>(null);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
 
-  // 브라우저 alert/confirm 대체용 인터랙티브 모달 상태관리
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
@@ -74,8 +62,16 @@ export default function ProductList() {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const data = await productApi.fetchCafe24Products();
-        setProducts(data.products ?? []);
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("products")
+          .select(
+            "id, name, price, stock, status, created_at, images, cafe24_product_no, shopify_product_id",
+          )
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        setProducts(data ?? []);
       } catch (error) {
         setLoadError("상품 목록을 불러오는 중 오류가 발생했습니다.");
       } finally {
@@ -95,7 +91,6 @@ export default function ProductList() {
     };
   }, []);
 
-  // 가상 토스트 지속 시간 세팅
   useEffect(() => {
     if (toastMessage) {
       const timer = setTimeout(() => setToastMessage(null), 3000);
@@ -104,11 +99,11 @@ export default function ProductList() {
   }, [toastMessage]);
 
   const totalCount = products.length;
-  const activeCount = products.filter(
-    (p) => getProductStatus(p) === "판매중",
+  const activeCount = products.filter((p) => p.status === "판매중").length;
+  const draftCount = products.filter((p) => p.status === "임시저장").length;
+  const multiChannelCount = products.filter(
+    (p) => p.cafe24_product_no && p.shopify_product_id,
   ).length;
-  const soldOutCount = products.filter((p) => p.sold_out === "T").length;
-  const inactiveCount = products.filter((p) => p.selling === "F").length;
 
   const summary = [
     {
@@ -124,38 +119,37 @@ export default function ProductList() {
       iconBg: "bg-[#e8f5e9]",
     },
     {
-      label: "품절",
-      count: soldOutCount,
-      icon: <AlertCircle size={18} className="text-[#c62828]" />,
-      iconBg: "bg-[#ffebee]",
+      label: "임시저장",
+      count: draftCount,
+      icon: <FileEdit size={18} className="text-[#616161]" />,
+      iconBg: "bg-[#f5f5f5]",
     },
     {
-      label: "판매중지",
-      count: inactiveCount,
-      icon: <HelpCircle size={18} className="text-[#616161]" />,
-      iconBg: "bg-[#f5f5f5]",
+      label: "멀티채널",
+      count: multiChannelCount,
+      icon: <Package size={18} className="text-indigo-600" />,
+      iconBg: "bg-indigo-50",
     },
   ];
 
   const filteredProducts = products.filter((product) => {
-    const status = getProductStatus(product);
     const matchesStatus =
-      selectedStatus === "전체" || status === selectedStatus;
-    const matchesSearch =
-      product.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.product_code.toLowerCase().includes(searchTerm.toLowerCase());
+      selectedStatus === "전체" || product.status === selectedStatus;
+    const matchesSearch = product.name
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase());
     return matchesStatus && matchesSearch;
   });
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedProductIds(filteredProducts.map((p) => p.product_no));
+      setSelectedProductIds(filteredProducts.map((p) => p.id));
     } else {
       setSelectedProductIds([]);
     }
   };
 
-  const handleSelectProduct = (productId: number) => {
+  const handleSelectProduct = (productId: string) => {
     if (selectedProductIds.includes(productId)) {
       setSelectedProductIds(
         selectedProductIds.filter((id) => id !== productId),
@@ -166,23 +160,34 @@ export default function ProductList() {
   };
 
   // 삭제
+  const handleSingleDelete = async (product: Product) => {
+    try {
+      const res = await fetch(`/api/products/${product.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("삭제 실패");
+
+      setProducts((prev) => prev.filter((p) => p.id !== product.id));
+      setToastMessage("선택한 상품이 정상적으로 삭제되었습니다.");
+    } catch {
+      setToastMessage("삭제 중 오류가 발생했습니다.");
+    }
+  };
+
   const handleBulkDelete = async () => {
     try {
-      // API 라우트 규격이 `/api/products/[productNo]`이므로 각 ID별로 DELETE 요청을 보냅니다.
-      const deletePromises = selectedProductIds.map((id) =>
-        fetch(`/api/products/${id}`, { method: "DELETE" }),
+      const targets = products.filter((p) => selectedProductIds.includes(p.id));
+
+      await Promise.all(
+        targets.map((p) =>
+          fetch(`/api/products/${p.id}`, { method: "DELETE" }).catch(
+            () => null,
+          ),
+        ),
       );
 
-      const results = await Promise.all(deletePromises);
-      const failedDeletes = results.filter((res) => !res.ok);
-
-      if (failedDeletes.length > 0) {
-        throw new Error(`${failedDeletes.length}개의 상품 삭제 실패`);
-      }
-
-      // 디비 삭제 성공 시에만 State에서 제거
       setProducts((prev) =>
-        prev.filter((p) => !selectedProductIds.includes(p.product_no)),
+        prev.filter((p) => !selectedProductIds.includes(p.id)),
       );
       setToastMessage("선택하신 상품이 목록에서 정상 삭제되었습니다.");
     } catch (error) {
@@ -226,7 +231,9 @@ export default function ProductList() {
             key={item.label}
             onClick={() =>
               setSelectedStatus(
-                item.label === "전체 상품" ? "전체" : item.label,
+                item.label === "전체 상품" || item.label === "멀티채널"
+                  ? "전체"
+                  : item.label,
               )
             }
             className="cursor-pointer p-5 rounded-2xl border border-[#e2e2e2] bg-white text-gray-900 transition-all duration-200 transform hover:-translate-y-0.5 hover:shadow-md shadow-sm"
@@ -252,12 +259,9 @@ export default function ProductList() {
       {/* 3. 통합 검색 및 필터 컨트롤러 */}
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-transparent">
-          {/* [좌측] 이미지 스타일 탭: 선택된 부분만 브랜드 메인 색상(#143617) */}
           <div className="inline-flex items-center p-1 bg-[#eceff1]/50 border border-gray-200/40 rounded-xl w-fit self-start">
-            {["전체", "판매중", "품절", "판매중지"].map((status) => {
-              const isActive =
-                selectedStatus === status ||
-                (status === "전체" && selectedStatus === "전체");
+            {["전체", "판매중", "임시저장"].map((status) => {
+              const isActive = selectedStatus === status;
               return (
                 <button
                   key={status}
@@ -274,7 +278,6 @@ export default function ProductList() {
             })}
           </div>
 
-          {/* [우측] 액션 버튼 그룹 (영문 버튼명 -> 한국어 버튼명으로 완벽 치환) */}
           <div className="flex flex-wrap items-center gap-2 bg-transparent">
             <div className="relative min-w-[200px] flex-1 md:flex-initial">
               <Search
@@ -308,7 +311,7 @@ export default function ProductList() {
         </div>
       </div>
 
-      {/* 4. 데이터 테이블 영역 (모든 열 start 좌측 정렬 적용) */}
+      {/* 4. 데이터 테이블 영역 */}
       <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="p-20 text-center">
@@ -332,13 +335,13 @@ export default function ProductList() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs md:text-sm text-left border-collapse">
-              {/* 모든 헤더 열 좌측(text-left) 정렬로 일관성 제공 */}
               <thead className="bg-[#fcfdfe] border-b border-gray-100/80 text-[#5e6e82] text-[11px] font-bold uppercase tracking-wider">
                 <tr>
                   <th className="w-14 px-6 py-5.5 text-center">
                     <input
                       type="checkbox"
                       checked={
+                        filteredProducts.length > 0 &&
                         selectedProductIds.length === filteredProducts.length
                       }
                       onChange={handleSelectAll}
@@ -349,13 +352,16 @@ export default function ProductList() {
                     상품명
                   </th>
                   <th className="px-8 py-5.5 font-bold text-[#5e6e82] text-left">
-                    상품 코드
+                    채널
                   </th>
                   <th className="px-8 py-5.5 font-bold text-[#5e6e82] text-left">
                     가격
                   </th>
                   <th className="px-8 py-5.5 font-bold text-[#5e6e82] text-left">
                     상태
+                  </th>
+                  <th className="px-8 py-5.5 font-bold text-[#5e6e82] text-left">
+                    재고
                   </th>
                   <th className="px-8 py-5.5 font-bold text-[#5e6e82] text-left">
                     등록일
@@ -367,18 +373,15 @@ export default function ProductList() {
               </thead>
               <tbody className="divide-y divide-gray-100/70">
                 {filteredProducts.map((product) => {
-                  const status = getProductStatus(product);
-                  const isChecked = selectedProductIds.includes(
-                    product.product_no,
-                  );
+                  const isChecked = selectedProductIds.includes(product.id);
                   return (
                     <tr
-                      key={product.product_no}
+                      key={product.id}
                       className={`hover:bg-[#f8f9fa]/70 transition-all cursor-pointer group ${
                         isChecked ? "bg-[#143617]/5 hover:bg-[#143617]/10" : ""
                       }`}
                     >
-                      {/* 체크박스 영역 */}
+                      {/* 체크박스 */}
                       <td
                         className="px-6 py-8.5 text-center"
                         onClick={(e) => e.stopPropagation()}
@@ -386,104 +389,92 @@ export default function ProductList() {
                         <input
                           type="checkbox"
                           checked={isChecked}
-                          onChange={() =>
-                            handleSelectProduct(product.product_no)
-                          }
+                          onChange={() => handleSelectProduct(product.id)}
                           className="rounded border-gray-300 text-[#143617] focus:ring-[#143617] w-4 h-4 cursor-pointer"
                         />
                       </td>
 
-                      {/* 상품명 + 이미지 프리뷰 영역 (여유로운 py-8.5 패딩 및 네모난 이미지) */}
+                      {/* 상품명 + 이미지 */}
                       <td className="px-8 py-8.5 text-left">
                         <div className="flex items-center gap-4.5 max-w-md">
-                          {/* 둥근 사각형 코너(rounded-xl)를 가진 스퀘어 상품 썸네일 플레이스홀더 */}
-                          {/* <div className="w-13 h-13 rounded-xl bg-gray-50 border border-gray-100/80 flex items-center justify-center text-xl shadow-inner shrink-0 group-hover:scale-105 transition-transform">
-                            <svg
-                              className="w-6 h-6 text-gray-300"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              strokeWidth="1.8"
-                            >
-                              <rect
-                                x="3"
-                                y="3"
-                                width="18"
-                                height="18"
-                                rx="3"
-                                ry="3"
-                              />
-                              <circle cx="8.5" cy="8.5" r="1.5" />
-                              <path
-                                d="M21 15l-5-5L5 21"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </div> */}
                           <div className="w-13 h-13 rounded-xl bg-gray-50 border border-gray-100/80 flex items-center justify-center overflow-hidden shrink-0 group-hover:scale-105 transition-transform">
-                            {product.list_image ? (
-                              // 🚀 이미지가 있다면 보여주고, 없다면 기존 SVG(플레이스홀더) 출력
+                            {product.images?.[0] ? (
                               <img
-                                src={product.list_image}
-                                alt={product.product_name}
+                                src={product.images[0]}
+                                alt={product.name}
                                 className="w-full h-full object-cover"
                               />
                             ) : (
-                              <svg
-                                className="w-6 h-6 text-gray-300"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <rect
-                                  x="3"
-                                  y="3"
-                                  width="18"
-                                  height="18"
-                                  rx="3"
-                                  ry="3"
-                                />
-                                <circle cx="8.5" cy="8.5" r="1.5" />
-                                <path
-                                  d="M21 15l-5-5L5 21"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
+                              <Package size={20} className="text-gray-300" />
                             )}
                           </div>
                           <div className="flex flex-col text-left">
                             <span className="font-bold text-gray-900 group-hover:text-[#143617] transition-colors leading-snug text-[14px]">
-                              {product.product_name}
+                              {product.name}
                             </span>
                           </div>
                         </div>
                       </td>
 
-                      {/* 상품코드 (start 정렬) */}
-                      <td className="px-8 py-8.5 text-left text-[#5e6e82] font-mono tracking-tight font-semibold text-xs">
-                        {product.product_code}
+                      {/* 채널 태그 */}
+                      <td className="px-8 py-8.5 text-left">
+                        <div className="flex gap-1.5">
+                          {product.cafe24_product_no && (
+                            <span
+                              title="카페24"
+                              className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 text-[11px] font-bold"
+                            >
+                              카
+                            </span>
+                          )}
+                          {product.shopify_product_id && (
+                            <span
+                              title="Shopify"
+                              className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 text-[11px] font-bold"
+                            >
+                              쇼
+                            </span>
+                          )}
+                          {!product.cafe24_product_no &&
+                            !product.shopify_product_id && (
+                              <span className="text-gray-300 text-xs">-</span>
+                            )}
+                        </div>
                       </td>
 
-                      {/* 가격 (start 정렬) */}
+                      {/* 가격 */}
                       <td className="px-8 py-8.5 text-left font-extrabold text-gray-900 text-sm md:text-base">
                         {Number(product.price).toLocaleString()}원
                       </td>
 
-                      {/* 상태 배지 (start 정렬) */}
+                      {/* 상태 배지 */}
                       <td className="px-8 py-8.5 text-left">
                         <span
-                          className={`inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg border border-transparent ${getStatusStyle(status)}`}
+                          className={`inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg border border-transparent ${getStatusStyle(product.status)}`}
                         >
                           <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-current opacity-80 animate-pulse"></span>
-                          {status}
+                          {product.status}
                         </span>
                       </td>
 
-                      {/* 등록일 (start 정렬) */}
+                      {/* 재고 */}
+                      <td className="px-8 py-8.5 text-left">
+                        <span
+                          className={`font-semibold text-sm ${
+                            product.stock === 0
+                              ? "text-red-600"
+                              : product.stock <= 5
+                                ? "text-amber-600"
+                                : "text-gray-700"
+                          }`}
+                        >
+                          {product.stock.toLocaleString()}개
+                        </span>
+                      </td>
+
+                      {/* 등록일 */}
                       <td className="px-8 py-8.5 text-left text-gray-400 font-semibold text-xs">
-                        {new Date(product.created_date).toLocaleDateString(
+                        {new Date(product.created_at).toLocaleDateString(
                           "ko-KR",
                           {
                             year: "numeric",
@@ -493,7 +484,7 @@ export default function ProductList() {
                         )}
                       </td>
 
-                      {/* 액션 메뉴 (start 정렬 및 absolute 드롭다운 위치 왼쪽 기준 조정) */}
+                      {/* 액션 메뉴 */}
                       <td
                         className="px-8 py-8.5 text-left relative"
                         onClick={(e) => e.stopPropagation()}
@@ -502,9 +493,9 @@ export default function ProductList() {
                           <button
                             onClick={() =>
                               setActiveDropdownId(
-                                activeDropdownId === product.product_no
+                                activeDropdownId === product.id
                                   ? null
-                                  : product.product_no,
+                                  : product.id,
                               )
                             }
                             className="p-2 hover:bg-gray-100 rounded-full transition-all text-[#5e6e82] hover:text-[#143617]"
@@ -512,44 +503,21 @@ export default function ProductList() {
                             <MoreHorizontal size={18} />
                           </button>
 
-                          {activeDropdownId === product.product_no && (
+                          {activeDropdownId === product.id && (
                             <div className="absolute left-0 mt-1.5 w-24 bg-white border border-gray-200 rounded-xl shadow-xl py-1 z-20 animate-in fade-in duration-100">
                               <button
                                 onClick={() => {
                                   setActiveDropdownId(null);
-                                  router.push(
-                                    `/products/${product.product_no}/edit`,
-                                  );
+                                  router.push(`/products/${product.id}/edit`);
                                 }}
                                 className="w-full text-left px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-[#143617] transition-all"
                               >
                                 수정
                               </button>
                               <button
-                                onClick={async () => {
+                                onClick={() => {
                                   setActiveDropdownId(null);
-                                  try {
-                                    const res = await fetch(
-                                      `/api/products/${product.product_no}`,
-                                      {
-                                        method: "DELETE",
-                                      },
-                                    );
-                                    if (!res.ok) throw new Error();
-                                    setProducts(
-                                      products.filter(
-                                        (p) =>
-                                          p.product_no !== product.product_no,
-                                      ),
-                                    );
-                                    setToastMessage(
-                                      "선택한 상품이 정상적으로 삭제되었습니다.",
-                                    );
-                                  } catch {
-                                    setToastMessage(
-                                      "삭제 중 오류가 발생했습니다.",
-                                    );
-                                  }
+                                  handleSingleDelete(product);
                                 }}
                                 className="w-full text-left px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition-all"
                               >
@@ -568,7 +536,7 @@ export default function ProductList() {
         )}
       </div>
 
-      {/* [하단 가상 플로팅 액션 바] 1개 이상의 아이템이 체크되었을 때 부드럽게 나타납니다 */}
+      {/* 하단 플로팅 액션 바 */}
       {selectedProductIds.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md border border-gray-200/80 shadow-[0_12px_40px_rgba(0,0,0,0.12)] px-6 py-4.5 rounded-2xl flex items-center gap-6 z-50 animate-in slide-in-from-bottom-4 duration-300">
           <div className="flex items-center gap-2">
@@ -583,22 +551,17 @@ export default function ProductList() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
-                // 커스텀 토스트 알림 작동 (alert 제거)
-                const codes = products
-                  .filter((p) => selectedProductIds.includes(p.product_no))
-                  .map((p) => p.product_code)
-                  .join(", ");
                 setToastMessage(
-                  `${selectedProductIds.length}개 상품 코드가 안전하게 복사되었습니다.`,
+                  `${selectedProductIds.length}개 상품이 선택되었습니다.`,
                 );
               }}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 active:bg-gray-100 rounded-xl transition-all"
             >
               <Copy size={13} className="text-gray-400" />
-              코드 복사
+              선택 복사
             </button>
             <button
-              onClick={() => setIsDeleteModalOpen(true)} // 커스텀 모달 오픈 (confirm 제거)
+              onClick={() => setIsDeleteModalOpen(true)}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 active:bg-red-100 rounded-xl transition-all"
             >
               <Trash2 size={13} className="text-red-400" />
@@ -615,7 +578,7 @@ export default function ProductList() {
         </div>
       )}
 
-      {/* [커스텀 알림 토스트 UI] alert() 대체용 피드백 배너 */}
+      {/* 토스트 */}
       {toastMessage && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></div>
@@ -623,7 +586,7 @@ export default function ProductList() {
         </div>
       )}
 
-      {/* [커스텀 삭제 확인 모달 UI] confirm() 대체용 모달 대화창 */}
+      {/* 삭제 확인 모달 */}
       {isDeleteModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl border border-gray-100 max-w-sm w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200">

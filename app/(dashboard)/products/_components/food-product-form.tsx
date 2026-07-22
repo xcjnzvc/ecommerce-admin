@@ -14,10 +14,6 @@ import {
   ALLERGEN_OPTIONS,
 } from "../new/food-product.schema";
 
-// ────────────────────────────────────────────────
-// 기본값
-// ────────────────────────────────────────────────
-
 const emptyDefaults: FoodProductFormInput = {
   name: "",
   categoryNos: [],
@@ -39,22 +35,28 @@ const emptyDefaults: FoodProductFormInput = {
     nutritionRequired: false,
     isImported: false,
   },
-  channels: { coupang: false, cafe24: false },
+  channels: { shopify: false, cafe24: false },
   channelData: {},
   status: "임시저장",
 };
 
 interface FoodProductFormProps {
   mode: "create" | "edit";
-  productNo?: number; // edit일 때: cafe24_product_no
+  id?: string; // edit일 때: cafe24_product_no
   productRowId?: string; // edit일 때: Supabase products.id
+  shopifyProductId?: number;
+  shopifyInventoryItemId?: number;
+  shopifyLocationId?: number;
   initialValues?: FoodProductFormInput;
 }
 
 export default function FoodProductForm({
   mode,
-  productNo,
+  id,
   productRowId,
+  shopifyProductId,
+  shopifyInventoryItemId,
+  shopifyLocationId,
   initialValues,
 }: FoodProductFormProps) {
   const {
@@ -96,8 +98,8 @@ export default function FoodProductForm({
 
   const [isOptionsOpen, setIsOptionsOpen] = React.useState(false);
   const [isLegalOpen, setIsLegalOpen] = React.useState(true);
-  const [previewTab, setPreviewTab] = React.useState<"coupang" | "cafe24">(
-    "coupang",
+  const [previewTab, setPreviewTab] = React.useState<"shopify" | "cafe24">(
+    "shopify",
   );
   const [categories, setCategories] = React.useState<
     { category_no: number; category_name: string }[]
@@ -112,23 +114,22 @@ export default function FoodProductForm({
 
   const nutritionRequired = watch("legalInfo.nutritionRequired");
   const isImported = watch("legalInfo.isImported");
-  const coupangChecked = watch("channels.coupang");
+  const shopifyChecked = watch("channels.shopify");
   const cafe24Checked = watch("channels.cafe24");
   const formSnapshot = watch();
 
   const handleChannelToggle = (
-    channel: "coupang" | "cafe24",
+    channel: "shopify" | "cafe24",
     checked: boolean,
   ) => {
     setValue(`channels.${channel}`, checked, { shouldValidate: true });
     if (checked) {
-      if (channel === "coupang") {
-        setValue("channelData.coupang", {
-          categoryMatch: "",
-          isRocketDelivery: false,
-          shippingFee: 0,
-          returnAddress: "",
-          shipFromAddress: "",
+      if (channel === "shopify") {
+        setValue("channelData.shopify", {
+          productType: "",
+          vendor: "",
+          tags: "",
+          publishStatus: "draft",
         });
       } else {
         setValue("channelData.cafe24", {
@@ -223,10 +224,6 @@ export default function FoodProductForm({
       // ── [1단계] 이미지 업로드 프로세스 실행 ──
       let mainImageUrl = mainImagePreview; // 기존 수정 모드일 때 보관된 URL 기본값 사용
 
-      // 대표 이미지가 새로 선택되었다면 업로드 진행
-      //   if (mainImageFile) {
-      //     mainImageUrl = await uploadToStorage(mainImageFile);
-      //   }
       if (mainImageFile) {
         mainImageUrl = await uploadToStorage(mainImageFile);
 
@@ -255,8 +252,20 @@ export default function FoodProductForm({
       finalImages.push(...finalDetailUrls);
 
       // ── [2단계] 페이로드 조립 ──
+      // 기존 description에서 법정 고시정보 블록이 있다면 그 이전까지만 가져옴 (중복 누적 방지)
+      // 1. 기존 설명(data.description)에서 고시정보 시작 문구가 있는 위치를 찾습니다.
+      const splitIndex =
+        data.description.indexOf("식품 등의 표시·광고에 관한 법률");
+
+      // 2. 만약 기존 설명에 고시정보가 이미 포함되어 있다면, 그 전까지만 깔끔하게 잘라냅니다.
+      const cleanDescription =
+        splitIndex !== -1
+          ? data.description.substring(0, splitIndex).trim()
+          : data.description.trim();
+
+      // 3. 순수 설명 뒤에 최신 고시정보를 딱 한 번만 붙입니다.
       const fullDescription =
-        data.description + buildLegalInfoHtml(data.legalInfo);
+        cleanDescription + buildLegalInfoHtml(data.legalInfo);
 
       const payload = {
         name: data.name,
@@ -302,7 +311,8 @@ export default function FoodProductForm({
               selling:
                 data.channelData.cafe24?.sellingStatus === "판매함" ? "T" : "F",
               // 필요 시 카페24 규격에 맞춰 대표 이미지 URL 전달 가능
-              detail_image: mainImageUrl || "",
+              detail_image: finalImages[0] || "",
+              stock_quantity: data.stock,
             }),
           });
 
@@ -315,11 +325,53 @@ export default function FoodProductForm({
           const newProductNo = cafe24Result?.product?.product_no;
 
           if (newProductNo && insertedRowId) {
+            // 재고 세팅 (카페24 상품 등록 API는 재고를 안 받으므로 별도 호출)
+            await fetch(`/api/products/${insertedRowId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ stock: data.stock }),
+            });
+
             await supabase
               .from("products")
               .update({
                 cafe24_product_no: newProductNo,
                 cafe24_synced_at: new Date().toISOString(),
+              })
+              .eq("id", insertedRowId);
+          }
+        }
+
+        // ── Shopify 등록 ──
+        if (data.channels.shopify) {
+          const shopifyRes = await fetch("/api/shopify/products", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: data.name,
+              body_html: fullDescription,
+              price: data.price,
+              sku: data.name.replace(/\s+/g, "-").toLowerCase(),
+              inventory_quantity: data.stock,
+              images: finalImages,
+            }),
+          });
+
+          if (!shopifyRes.ok) {
+            const err = await shopifyRes.json();
+            throw new Error(err.error || "Shopify 등록 실패");
+          }
+
+          const shopifyResult = await shopifyRes.json();
+
+          if (shopifyResult.shopify_product_id && insertedRowId) {
+            await supabase
+              .from("products")
+              .update({
+                shopify_product_id: shopifyResult.shopify_product_id,
+                shopify_inventory_item_id:
+                  shopifyResult.shopify_inventory_item_id,
+                shopify_synced_at: new Date().toISOString(),
               })
               .eq("id", insertedRowId);
           }
@@ -337,8 +389,9 @@ export default function FoodProductForm({
 
         if (error) throw error;
 
-        if (productNo && data.channels.cafe24) {
-          const res = await fetch(`/api/products/${productNo}`, {
+        if (id && data.channels.cafe24) {
+          console.log("현재 전송하는 상품 UUID (id):", id);
+          const res = await fetch(`/api/products/${id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -359,6 +412,27 @@ export default function FoodProductForm({
             throw new Error(err.error || "카페24 수정 실패");
           }
         }
+        if (data.channels.shopify && shopifyProductId) {
+          const res = await fetch(`/api/shopify/products/${shopifyProductId}`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: data.name,
+              body_html: fullDescription,
+              images: finalImages,
+              stock: data.stock,
+              inventory_item_id: shopifyInventoryItemId,
+              location_id: shopifyLocationId,
+            }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || "Shopify 수정 실패");
+          }
+        }
       }
 
       setIsSaving(false);
@@ -374,15 +448,15 @@ export default function FoodProductForm({
     }
   };
 
-  const buildPreviewPayload = (channel: "coupang" | "cafe24") => {
+  const buildPreviewPayload = (channel: "shopify" | "cafe24") => {
     const base = {
       name: formSnapshot.name,
       price: formSnapshot.price,
       stock: formSnapshot.stock,
       legalInfo: formSnapshot.legalInfo,
     };
-    return channel === "coupang"
-      ? { ...base, coupang: formSnapshot.channelData.coupang }
+    return channel === "shopify"
+      ? { ...base, shopify: formSnapshot.channelData.shopify }
       : { ...base, cafe24: formSnapshot.channelData.cafe24 };
   };
 
@@ -394,7 +468,7 @@ export default function FoodProductForm({
             {mode === "create" ? "상품 등록 (식품)" : "상품 수정 (식품)"}
           </h1>
           <p className="text-slate-500 text-sm">
-            쿠팡과 카페24 채널별 정보를 한 번에 입력하고{" "}
+            Shopify와 카페24 채널별 정보를 한 번에 입력하고{" "}
             {mode === "create" ? "등록" : "수정"}하세요.
           </p>
         </header>
@@ -906,12 +980,12 @@ export default function FoodProductForm({
               <label className="flex items-center gap-2 cursor-pointer text-sm">
                 <input
                   type="checkbox"
-                  checked={coupangChecked}
+                  checked={shopifyChecked}
                   onChange={(e) =>
-                    handleChannelToggle("coupang", e.target.checked)
+                    handleChannelToggle("shopify", e.target.checked)
                   }
                 />
-                쿠팡
+                Shopify
               </label>
               <label className="flex items-center gap-2 cursor-pointer text-sm">
                 <input
@@ -925,59 +999,51 @@ export default function FoodProductForm({
               </label>
             </div>
 
-            {coupangChecked && (
+            {shopifyChecked && (
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 text-sm mb-4">
                 <p className="font-semibold text-blue-900 mb-3">
-                  쿠팡 전용 정보
+                  Shopify 전용 정보
                 </p>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
-                    label="쿠팡 카테고리 매칭"
-                    error={errors.channelData?.coupang?.categoryMatch?.message}
+                    label="Product Type"
+                    error={errors.channelData?.shopify?.productType?.message}
                   >
                     <input
                       className="input"
-                      placeholder="예: 가공식품 > 과자류"
-                      {...register("channelData.coupang.categoryMatch")}
+                      placeholder="예: 과자, 건강기능식품"
+                      {...register("channelData.shopify.productType")}
                     />
                   </FormField>
                   <FormField
-                    label="배송비 (원)"
-                    error={errors.channelData?.coupang?.shippingFee?.message}
+                    label="Vendor (브랜드명)"
+                    error={errors.channelData?.shopify?.vendor?.message}
                   >
                     <input
-                      type="number"
                       className="input"
-                      {...register("channelData.coupang.shippingFee")}
+                      placeholder="예: 가꾸기"
+                      {...register("channelData.shopify.vendor")}
                     />
                   </FormField>
                   <FormField
-                    label="반품지 정보"
-                    error={errors.channelData?.coupang?.returnAddress?.message}
+                    label="태그 (콤마로 구분)"
+                    error={errors.channelData?.shopify?.tags?.message}
                   >
                     <input
                       className="input"
-                      {...register("channelData.coupang.returnAddress")}
+                      placeholder="예: 신상품, 베스트"
+                      {...register("channelData.shopify.tags")}
                     />
                   </FormField>
-                  <FormField
-                    label="출고지 정보"
-                    error={
-                      errors.channelData?.coupang?.shipFromAddress?.message
-                    }
-                  >
-                    <input
-                      className="input"
-                      {...register("channelData.coupang.shipFromAddress")}
-                    />
+                  <FormField label="공개 상태">
+                    <select
+                      className="input bg-white"
+                      {...register("channelData.shopify.publishStatus")}
+                    >
+                      <option value="draft">임시저장 (draft)</option>
+                      <option value="active">공개 (active)</option>
+                    </select>
                   </FormField>
-                  <label className="flex items-center gap-2 text-sm col-span-2">
-                    <input
-                      type="checkbox"
-                      {...register("channelData.coupang.isRocketDelivery")}
-                    />
-                    로켓배송 여부
-                  </label>
                 </div>
               </div>
             )}
@@ -1025,14 +1091,14 @@ export default function FoodProductForm({
             <div className="flex gap-2 border-b mb-4">
               <button
                 type="button"
-                onClick={() => setPreviewTab("coupang")}
+                onClick={() => setPreviewTab("shopify")}
                 className={`px-4 py-2 text-sm ${
-                  previewTab === "coupang"
+                  previewTab === "shopify"
                     ? "border-b-2 border-indigo-600 font-semibold text-indigo-600"
                     : "text-slate-500"
                 }`}
               >
-                쿠팡 미리보기
+                Shopify 미리보기
               </button>
               <button
                 type="button"

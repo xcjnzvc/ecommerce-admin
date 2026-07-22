@@ -74,12 +74,11 @@ const foodLegalInfoSchema = z.object({
 // 4. 채널별 정보
 // ────────────────────────────────────────────────
 
-const coupangDataSchema = z.object({
-  categoryMatch: z.string().min(1, "쿠팡 카테고리를 선택하세요"),
-  isRocketDelivery: z.boolean().default(false),
-  shippingFee: z.coerce.number().min(0, "배송비를 입력하세요"),
-  returnAddress: z.string().min(1, "반품지 정보를 입력하세요"),
-  shipFromAddress: z.string().min(1, "출고지 정보를 입력하세요"),
+const shopifyDataSchema = z.object({
+  productType: z.string().min(1, "상품 유형(Product type)을 입력하세요"),
+  vendor: z.string().min(1, "판매자/브랜드명(Vendor)을 입력하세요"),
+  tags: z.string().optional().default(""), // 콤마로 구분된 태그
+  publishStatus: z.enum(["active", "draft"]).default("draft"),
 });
 
 const cafe24DataSchema = z.object({
@@ -113,11 +112,11 @@ export const foodProductSchema = z
 
     // 4. 채널 선택 + 채널별 정보
     channels: z.object({
-      coupang: z.boolean().default(false),
+      shopify: z.boolean().default(false),
       cafe24: z.boolean().default(false),
     }),
     channelData: z.object({
-      coupang: coupangDataSchema.optional(),
+      shopify: shopifyDataSchema.optional(),
       cafe24: cafe24DataSchema.optional(),
     }),
 
@@ -125,7 +124,6 @@ export const foodProductSchema = z
   })
   // ── 조건부 필수값 검증 ──
   .superRefine((data, ctx) => {
-    // 영양성분표시 대상이면 nutrition 필수
     if (data.legalInfo.nutritionRequired && !data.legalInfo.nutrition) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -134,7 +132,6 @@ export const foodProductSchema = z
       });
     }
 
-    // 수입식품이면 importInfo 필수
     if (data.legalInfo.isImported && !data.legalInfo.importInfo) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -145,7 +142,7 @@ export const foodProductSchema = z
     }
 
     // 최소 1개 채널 선택 필수
-    if (!data.channels.coupang && !data.channels.cafe24) {
+    if (!data.channels.shopify && !data.channels.cafe24) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "최소 1개 이상의 채널을 선택해야 합니다",
@@ -153,12 +150,12 @@ export const foodProductSchema = z
       });
     }
 
-    // 쿠팡 선택 시 쿠팡 데이터 필수
-    if (data.channels.coupang && !data.channelData.coupang) {
+    // Shopify 선택 시 Shopify 데이터 필수
+    if (data.channels.shopify && !data.channelData.shopify) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "쿠팡 전용 정보를 입력해야 합니다",
-        path: ["channelData", "coupang"],
+        message: "Shopify 전용 정보를 입력해야 합니다",
+        path: ["channelData", "shopify"],
       });
     }
 
@@ -172,8 +169,5 @@ export const foodProductSchema = z
     }
   });
 
-// z.coerce.number() 등으로 인해 "폼에 입력되는 값의 타입(input)"과
-// "zod 검증을 통과한 뒤의 최종 타입(output)"이 다릅니다.
-// useForm의 제네릭에 각각 따로 넘겨줘야 타입 에러가 나지 않습니다.
 export type FoodProductFormInput = z.input<typeof foodProductSchema>;
 export type FoodProductFormValues = z.output<typeof foodProductSchema>;

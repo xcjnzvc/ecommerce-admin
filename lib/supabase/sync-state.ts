@@ -1,6 +1,3 @@
-// 동기화 커서 및 에러 로그 전용 레이어.
-// cafe24.ts와 동일하게 service role 클라이언트 사용 (인증 세션 없는 서버 전용 작업이므로 server.ts 대신 이 방식 사용)
-
 import { createClient } from "@supabase/supabase-js";
 
 function getServiceClient() {

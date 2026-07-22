@@ -10,8 +10,7 @@ export interface Cafe24OrderItem {
 
 export interface Cafe24ProductDetail {
   product_no: number;
-  product_code: string;
-  quantity: number; // 실제 응답 확인 후 필드명 조정 필요 (variants 하위일 수도 있음)
+  quantity: number;
 }
 
 // 재고에 영향을 주는 주문 이벤트 기준 날짜 유형

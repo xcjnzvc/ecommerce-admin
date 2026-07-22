@@ -1,11 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { cafe24 } from "@/lib/api/cafe24";
-import {
-  getLastSyncedAt,
-  updateLastSyncedAt,
-  logSyncError,
-} from "@/lib/supabase/sync-state";
-import { INVENTORY_DATE_TYPES } from "@/types/cafe24";
+import { shopify } from "@/lib/api/shopify";
+import { updateLastSyncedAt, logSyncError } from "@/lib/supabase/sync-state";
 
 function getServiceClient() {
   return createClient(
@@ -14,7 +10,6 @@ function getServiceClient() {
   );
 }
 
-// 동시 호출 제한 (카페24 호출건수 제한 40건 대비 여유있게)
 async function runWithConcurrencyLimit<T, R>(
   items: T[],
   limit: number,
@@ -30,57 +25,34 @@ async function runWithConcurrencyLimit<T, R>(
 
 export async function syncInventory(): Promise<{
   syncedProductCount: number;
+  shopifySyncedCount: number;
   errorCount: number;
 }> {
+  console.log("syncInventory 실행");
+  console.log("########## 내가 수정한 코드 실행 ##########");
   const now = new Date().toISOString();
-  const lastSyncedAt = await getLastSyncedAt();
+  let errorCount = 0;
+  const supabase = getServiceClient();
 
-  const startDate = lastSyncedAt.slice(0, 10);
-  const endDate = now.slice(0, 10);
+  // ── [동적 조회 우회] Supabase에 등록된 모든 상품의 cafe24_product_no 가져오기 ──
+  const { data: dbProducts, error: dbError } = await supabase
+    .from("products")
+    .select("cafe24_product_no");
 
-  // ── 1단계: 재고에 영향 준 주문 수집 (신규/취소/반품/교환 각각) ──
-  const orderLists = await Promise.all(
-    INVENTORY_DATE_TYPES.map((dateType) =>
-      cafe24.getOrders({ startDate, endDate, dateType }).catch((err) => {
-        console.error(`${dateType} 주문 조회 실패:`, err);
-        return [];
-      }),
-    ),
-  );
-
-  const uniqueOrderIds = Array.from(
-    new Set(orderLists.flat().map((o) => o.order_id)),
-  );
-
-  if (uniqueOrderIds.length === 0) {
-    await updateLastSyncedAt(now);
-    return { syncedProductCount: 0, errorCount: 0 };
+  if (dbError || !dbProducts) {
+    console.error("Supabase 상품 목록 조회 실패:", dbError);
+    return { syncedProductCount: 0, shopifySyncedCount: 0, errorCount: 1 };
   }
 
-  // ── 2단계: 각 주문의 품주 조회 → 영향받은 product_no 수집 ──
-  let errorCount = 0;
-
-  const itemsPerOrder = await runWithConcurrencyLimit(
-    uniqueOrderIds,
-    5,
-    async (orderId) => {
-      try {
-        return await cafe24.getOrderItems(orderId);
-      } catch (error) {
-        errorCount++;
-        await logSyncError({
-          orderId,
-          errorMessage:
-            error instanceof Error ? error.message : "알 수 없는 오류",
-        });
-        return [];
-      }
-    },
-  );
-
+  // 중복 제거 및 숫자형(`number`)으로 변환하여 배열 생성
   const affectedProductNos = Array.from(
-    new Set(itemsPerOrder.flat().map((item) => item.product_no)),
+    new Set(dbProducts.map((p) => Number(p.cafe24_product_no)).filter(Boolean)),
   );
+
+  if (affectedProductNos.length === 0) {
+    await updateLastSyncedAt(now);
+    return { syncedProductCount: 0, shopifySyncedCount: 0, errorCount: 0 };
+  }
 
   // ── 3단계: 영향받은 상품만 최신 재고 재조회 ──
   const productResults = await runWithConcurrencyLimit(
@@ -93,6 +65,8 @@ export async function syncInventory(): Promise<{
         await logSyncError({ productNo, errorMessage: "상품 재고 조회 실패" });
         return null;
       }
+      console.log(product.product_no);
+      console.log(product.quantity);
       return product;
     },
   );
@@ -101,29 +75,94 @@ export async function syncInventory(): Promise<{
     (p): p is NonNullable<typeof p> => p !== null,
   );
 
-  // ── 4단계: Supabase 업데이트 ──
-  const supabase = getServiceClient();
+  console.log("validProducts 개수:", validProducts.length);
 
-  for (const product of validProducts) {
-    const { error } = await supabase
+  // ── 4단계: Supabase 업데이트 + Shopify 재고 동기화 ──
+  let shopifySyncedCount = 0;
+
+  await runWithConcurrencyLimit(validProducts, 5, async (product) => {
+    const numericProductNo = Number(product.product_no);
+
+    // 4-1. 해당 상품의 Supabase row 조회
+    const { data: row, error: selectError } = await supabase
+      .from("products")
+      .select("id, shopify_inventory_item_id")
+      .eq("cafe24_product_no", numericProductNo)
+      .maybeSingle();
+
+    console.log("Supabase row:", row);
+
+    if (selectError) {
+      errorCount++;
+      await logSyncError({
+        productNo: numericProductNo,
+        errorMessage: `Supabase 조회 실패: ${selectError.message}`,
+      });
+      return;
+    }
+
+    // 4-2. Supabase stock 업데이트
+    console.log("업데이트 전", numericProductNo, product.quantity);
+
+    const { error: updateError } = await supabase
       .from("products")
       .update({
         stock: product.quantity,
         stock_synced_at: new Date().toISOString(),
       })
-      .eq("cafe24_product_no", product.product_no);
+      .eq("cafe24_product_no", numericProductNo);
 
-    if (error) {
+    console.log("업데이트 결과", updateError);
+
+    if (updateError) {
       errorCount++;
       await logSyncError({
-        productNo: product.product_no,
-        errorMessage: `Supabase 업데이트 실패: ${error.message}`,
+        productNo: numericProductNo,
+        errorMessage: `Supabase 업데이트 실패: ${updateError.message}`,
       });
+      return;
     }
-  }
+
+    console.log({
+      row,
+      inventoryItemId: row?.shopify_inventory_item_id,
+      locationId: process.env.SHOPIFY_LOCATION_ID,
+    });
+
+    // 4-3. Shopify 재고 동기화
+    if (row?.shopify_inventory_item_id && process.env.SHOPIFY_LOCATION_ID) {
+      try {
+        console.log("Shopify 보낼 값", {
+          inventoryItemId: row?.shopify_inventory_item_id,
+          locationId: process.env.SHOPIFY_LOCATION_ID,
+          quantity: product.quantity,
+        });
+        await shopify.updateStock(
+          row.shopify_inventory_item_id,
+          Number(process.env.SHOPIFY_LOCATION_ID),
+          product.quantity,
+        );
+        shopifySyncedCount++;
+      } catch (shopifyError) {
+        errorCount++;
+        await logSyncError({
+          productNo: numericProductNo,
+          errorMessage: `Shopify 재고 동기화 실패: ${
+            shopifyError instanceof Error
+              ? shopifyError.message
+              : "알 수 없는 오류"
+          }`,
+        });
+      }
+    }
+  });
 
   // ── 5단계: 커서 갱신 ──
   await updateLastSyncedAt(now);
 
-  return { syncedProductCount: validProducts.length, errorCount };
+  return {
+    syncedProductCount: validProducts.length,
+    shopifySyncedCount,
+    errorCount,
+  };
 }

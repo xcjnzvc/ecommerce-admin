@@ -12,6 +12,7 @@ interface ProductRequestBody {
   category_nos: number[];
   images?: string[] | string;
   detail_image?: string;
+  stock_quantity?: number;
   [key: string]:
     | string
     | number
@@ -49,7 +50,13 @@ export async function POST(req: NextRequest) {
   try {
     const body: ProductRequestBody = await req.json();
 
-    const { category_nos, images, detail_image, ...productBody } = body;
+    const {
+      category_nos,
+      images,
+      detail_image,
+      stock_quantity,
+      ...productBody
+    } = body;
 
     // 대표 이미지 추출 로직
     let mainImage: string | null = null;
@@ -87,7 +94,21 @@ export async function POST(req: NextRequest) {
     };
 
     const result = await cafe24.createProduct(cafe24Payload);
+
+    console.log("상품 생성 응답:", JSON.stringify(result, null, 2));
+
     const productNo = result?.product?.product_no;
+
+    // 재고관리 활성화
+    if (productNo) {
+      try {
+        await cafe24.updateStock(productNo, stock_quantity ?? 0);
+
+        console.log("재고관리 활성화 완료:", productNo);
+      } catch (stockError) {
+        console.error("재고관리 활성화 실패:", stockError);
+      }
+    }
 
     // 상품에 이미지 등록
     if (productNo && uploadedPath) {
