@@ -39,7 +39,6 @@ export async function PUT(
   const body = await req.json();
 
   const {
-    stock,
     detail_image,
     list_image,
     small_image,
@@ -50,7 +49,7 @@ export async function PUT(
   // row 조회해서 각 채널 연동 정보 확보 (필요한 컬럼만 조회)
   const { data: row, error: rowError } = await supabase
     .from("products")
-    .select("cafe24_product_no, shopify_inventory_item_id")
+    .select("cafe24_product_no")
     .eq("id", id)
     .single();
 
@@ -84,24 +83,6 @@ export async function PUT(
           tiny_image: base64,
         });
       }
-
-      // 재고 수정
-      if (typeof stock === "number") {
-        await cafe24.updateStock(row.cafe24_product_no, stock);
-      }
-    }
-
-    // ── Shopify 반영 ──
-    if (
-      typeof stock === "number" &&
-      row.shopify_inventory_item_id &&
-      process.env.SHOPIFY_LOCATION_ID
-    ) {
-      await shopify.updateStock(
-        row.shopify_inventory_item_id,
-        Number(process.env.SHOPIFY_LOCATION_ID),
-        stock,
-      );
     }
 
     // ── Supabase 반영 ──
@@ -110,7 +91,6 @@ export async function PUT(
       .update({
         ...productFields,
         ...(detail_image && { detail_image }),
-        stock,
         cafe24_synced_at: new Date().toISOString(),
       })
       .eq("id", id);

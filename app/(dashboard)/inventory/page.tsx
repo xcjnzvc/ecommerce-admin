@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Search,
   Package,
@@ -17,14 +17,11 @@ import {
 interface InventoryItem {
   id: string;
   name: string;
-  sku: string;
-  warehouse_stock: number; // 실제 보유 재고 (창고)
-  reserved_stock: number; // 주문 처리중
-  available_stock: number; // 판매 가능 재고 (warehouse - reserved)
-  cafe24_stock: number; // 카페24 판매 가능 재고
-  shopify_stock: number; // Shopify 판매 가능 재고
+  stock: number;
+  stock_synced_at: string | null;
+  cafe24_product_no: number | null;
+  shopify_inventory_item_id: number | null;
   status: "정상" | "부족" | "품절" | "동기화오류";
-  last_synced_at: string;
   images: string[] | null;
 }
 
@@ -52,93 +49,56 @@ const getInventoryStatusStyle = (status: string) => {
 };
 
 export default function InventoryManagement() {
-  /* STREAMING_CHUNK:Initializing advanced inventory state... */
-  const [items, setItems] = useState<InventoryItem[]>([
-    {
-      id: "1",
-      name: "스페셜티 시그니처 원두 200g",
-      sku: "SKU-BND-001",
-      warehouse_stock: 100,
-      reserved_stock: 10,
-      available_stock: 90,
-      cafe24_stock: 45,
-      shopify_stock: 45,
-      status: "정상",
-      last_synced_at: new Date().toISOString(),
-      images: [],
-    },
-    {
-      id: "2",
-      name: "핸드드립 콜드브루 텀블러",
-      sku: "SKU-TMB-002",
-      warehouse_stock: 8,
-      reserved_stock: 5,
-      available_stock: 3,
-      cafe24_stock: 1,
-      shopify_stock: 2,
-      status: "부족",
-      last_synced_at: new Date().toISOString(),
-      images: [],
-    },
-    {
-      id: "3",
-      name: "유기농 수제 쿠키 선물세트",
-      sku: "SKU-CK-003",
-      warehouse_stock: 0,
-      reserved_stock: 0,
-      available_stock: 0,
-      cafe24_stock: 0,
-      shopify_stock: 0,
-      status: "품절",
-      last_synced_at: new Date().toISOString(),
-      images: [],
-    },
-    {
-      id: "4",
-      name: "프리미엄 드립백 기프트",
-      sku: "SKU-DB-004",
-      warehouse_stock: 50,
-      reserved_stock: 2,
-      available_stock: 48,
-      cafe24_stock: 20,
-      shopify_stock: 25, // 합계(45)와 창고 가용(48) 불일치 시뮬레이션
-      status: "동기화오류",
-      last_synced_at: new Date().toISOString(),
-      images: [],
-    },
-  ]);
-
-  const [logs, setLogs] = useState<InventoryLog[]>([
-    {
-      id: "l1",
-      product_name: "스페셜티 시그니처 원두 200g",
-      change_detail: "창고 실제 재고 수정: 100 → 120",
-      modifier: "관리자",
-      created_at: "2026-07-22 18:30",
-    },
-    {
-      id: "l2",
-      product_name: "핸드드립 콜드브루 텀블러",
-      change_detail: "카페24 주문 발생 (주문 처리중 3 → 5)",
-      modifier: "시스템 자동",
-      created_at: "2026-07-22 17:20",
-    },
-  ]);
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [logs, setLogs] = useState<InventoryLog[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("전체");
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
-
-  // 독립 수정용 상태
-  const [editWarehouseStock, setEditWarehouseStock] = useState<number>(0);
-  const [editReservedStock, setEditReservedStock] = useState<number>(0);
-  const [editCafe24Stock, setEditCafe24Stock] = useState<number>(0);
-  const [editShopifyStock, setEditShopifyStock] = useState<number>(0);
+  const [editStock, setEditStock] = useState<number>(0);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const fetchInventory = useCallback(async () => {
+    const res = await fetch("/api/inventory");
+    if (!res.ok) throw new Error("재고 목록 조회 실패");
+    const data = await res.json();
+    setItems(data.items ?? []);
+  }, []);
+
+  const fetchLogs = useCallback(async () => {
+    const res = await fetch("/api/inventory/logs");
+    if (!res.ok) throw new Error("재고 변경 이력 조회 실패");
+    const data = await res.json();
+    setLogs(data.logs ?? []);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setIsLoading(true);
+      try {
+        await Promise.all([fetchInventory(), fetchLogs()]);
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) {
+          setToastMessage("재고 데이터를 불러오지 못했습니다.");
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchInventory, fetchLogs]);
 
   useEffect(() => {
     if (toastMessage) {
@@ -148,10 +108,7 @@ export default function InventoryManagement() {
   }, [toastMessage]);
 
   const totalProducts = items.length;
-  const totalWarehouseStock = items.reduce(
-    (acc, cur) => acc + cur.warehouse_stock,
-    0,
-  );
+  const totalStock = items.reduce((acc, cur) => acc + cur.stock, 0);
   const outOfStockCount = items.filter((i) => i.status === "품절").length;
   const syncErrorCount = items.filter((i) => i.status === "동기화오류").length;
 
@@ -165,7 +122,7 @@ export default function InventoryManagement() {
     },
     {
       label: "총 보유 재고",
-      count: totalWarehouseStock,
+      count: totalStock,
       unit: "개",
       icon: <CheckCircle2 size={18} className="text-[#1b5e20]" />,
       iconBg: "bg-[#e8f5e9]",
@@ -194,102 +151,84 @@ export default function InventoryManagement() {
       (selectedStatus === "품절" && item.status === "품절") ||
       (selectedStatus === "동기화오류" && item.status === "동기화오류");
 
-    const matchesSearch =
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = item.name
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase());
 
     return matchesStatus && matchesSearch;
   });
 
   const handleOpenEditModal = (item: InventoryItem) => {
     setEditingItem(item);
-    setEditWarehouseStock(item.warehouse_stock);
-    setEditReservedStock(item.reserved_stock);
-    setEditCafe24Stock(item.cafe24_stock);
-    setEditShopifyStock(item.shopify_stock);
+    setEditStock(item.stock);
     setIsEditModalOpen(true);
   };
 
-  const handleSaveInventory = () => {
+  const handleSaveInventory = async () => {
     if (!editingItem) return;
 
-    const newAvailable = Math.max(0, editWarehouseStock - editReservedStock);
-    let updatedStatus: "정상" | "부족" | "품절" | "동기화오류" = "정상";
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/products/${editingItem.id}/stock`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stock: editStock }),
+      });
 
-    if (editWarehouseStock === 0) updatedStatus = "품절";
-    else if (newAvailable <= 5) updatedStatus = "부족";
-    else if (editCafe24Stock + editShopifyStock !== newAvailable) {
-      updatedStatus = "동기화오류";
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "재고 저장 실패");
+      }
+
+      await Promise.all([fetchInventory(), fetchLogs()]);
+      setToastMessage(`'${editingItem.name}' 재고 설정이 저장되었습니다.`);
+      setIsEditModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      setToastMessage(
+        err instanceof Error ? err.message : "재고 저장에 실패했습니다.",
+      );
+    } finally {
+      setIsSaving(false);
     }
-
-    const updatedItems = items.map((i) =>
-      i.id === editingItem.id
-        ? {
-            ...i,
-            warehouse_stock: editWarehouseStock,
-            reserved_stock: editReservedStock,
-            available_stock: newAvailable,
-            cafe24_stock: editCafe24Stock,
-            shopify_stock: editShopifyStock,
-            status: updatedStatus,
-            last_synced_at: new Date().toISOString(),
-          }
-        : i,
-    );
-
-    setItems(updatedItems);
-
-    const newLog: InventoryLog = {
-      id: Date.now().toString(),
-      product_name: editingItem.name,
-      change_detail: `창고재고: ${editWarehouseStock}, 예약: ${editReservedStock}, 카페24: ${editCafe24Stock}, 쇼피파이: ${editShopifyStock}`,
-      modifier: "관리자",
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
-    };
-    setLogs([newLog, ...logs]);
-
-    setToastMessage(`'${editingItem.name}' 재고 설정이 저장되었습니다.`);
-    setIsEditModalOpen(false);
   };
 
-  const handleFullSync = () => {
+  const handleFullSync = async () => {
     setIsSyncing(true);
-    setTimeout(() => {
-      setItems((prev) =>
-        prev.map((i) => {
-          const avail = Math.max(0, i.warehouse_stock - i.reserved_stock);
-          const half = Math.floor(avail / 2);
-          return {
-            ...i,
-            available_stock: avail,
-            cafe24_stock: half,
-            shopify_stock: avail - half,
-            status:
-              i.warehouse_stock === 0 ? "품절" : avail <= 5 ? "부족" : "정상",
-            last_synced_at: new Date().toISOString(),
-          };
-        }),
+    try {
+      const res = await fetch("/api/cron/sync-inventory");
+      const data = await res.json();
+
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "전체 재고 동기화 실패");
+      }
+
+      await fetchInventory();
+      setToastMessage(
+        `동기화 완료 — 상품 ${data.syncedProductCount ?? 0}개, 오류 ${data.errorCount ?? 0}건`,
       );
+    } catch (err) {
+      console.error(err);
+      setToastMessage(
+        err instanceof Error ? err.message : "전체 재고 동기화에 실패했습니다.",
+      );
+    } finally {
       setIsSyncing(false);
-      setToastMessage("채널별 재고 대사 및 API 전체 동기화가 완료되었습니다.");
-    }, 1000);
+    }
   };
 
   return (
     <div className="max-w-[1600px] mx-auto w-full p-8 bg-[#f8f9fa] min-h-screen font-sans relative pb-28">
-      {/* 1. 상단 타이틀 영역 */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
             재고 관리
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            창고 실물 보유량, 주문 처리중 수량 및 카페24/Shopify 판매 채널별
-            수량을 정밀 관리합니다.
+            상품 재고와 카페24/Shopify 채널 동기화 상태를 관리합니다.
           </p>
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto">
-          {/* 채널 연결 상태 위젯 */}
           <div className="hidden lg:flex items-center gap-4 px-4 py-2 bg-white border border-[#e2e2e2] rounded-xl text-xs font-semibold text-gray-700 shadow-sm">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -313,7 +252,6 @@ export default function InventoryManagement() {
         </div>
       </div>
 
-      {/* 2. 대시보드 요약 카드 영역 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
         {summary.map((item) => (
           <div
@@ -324,7 +262,7 @@ export default function InventoryManagement() {
                   ? "전체"
                   : item.label === "품절 상품"
                     ? "품절"
-                    : "동기화 오류",
+                    : "동기화오류",
               )
             }
             className="cursor-pointer p-5 rounded-2xl border border-[#e2e2e2] bg-white text-gray-900 transition-all duration-200 transform hover:-translate-y-0.5 hover:shadow-md shadow-sm"
@@ -347,7 +285,6 @@ export default function InventoryManagement() {
         ))}
       </div>
 
-      {/* 3. 통합 검색 및 필터 컨트롤러 */}
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-transparent">
           <div className="inline-flex items-center p-1 bg-[#eceff1]/50 border border-gray-200/40 rounded-xl w-fit flex-wrap">
@@ -377,7 +314,7 @@ export default function InventoryManagement() {
               />
               <input
                 type="text"
-                placeholder="상품명 또는 SKU 검색..."
+                placeholder="상품명 검색..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#143617] focus:border-[#143617] transition-all"
@@ -387,9 +324,16 @@ export default function InventoryManagement() {
         </div>
       </div>
 
-      {/* 4. 재고 목록 테이블 영역 */}
       <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden mb-10">
-        {filteredItems.length === 0 ? (
+        {isLoading ? (
+          <div className="p-20 text-center text-gray-400">
+            <RefreshCw
+              className="mx-auto mb-3 text-gray-300 animate-spin"
+              size={36}
+            />
+            <p className="text-sm font-medium">재고 데이터를 불러오는 중...</p>
+          </div>
+        ) : filteredItems.length === 0 ? (
           <div className="p-20 text-center text-gray-400">
             <Package className="mx-auto mb-3 text-gray-300" size={36} />
             <p className="text-sm font-medium">
@@ -402,19 +346,13 @@ export default function InventoryManagement() {
               <thead className="bg-[#fcfdfe] border-b border-gray-100/80 text-[#5e6e82] text-[11px] font-bold uppercase tracking-wider">
                 <tr>
                   <th className="px-8 py-5.5 font-bold text-[#5e6e82] text-left">
-                    상품명 / SKU
+                    상품명
                   </th>
                   <th className="px-8 py-5.5 font-bold text-[#5e6e82] text-left">
-                    실제 창고 재고
+                    채널
                   </th>
                   <th className="px-8 py-5.5 font-bold text-[#5e6e82] text-left">
-                    판매 가능 재고
-                  </th>
-                  <th className="px-8 py-5.5 font-bold text-[#5e6e82] text-left">
-                    카페24 재고
-                  </th>
-                  <th className="px-8 py-5.5 font-bold text-[#5e6e82] text-left">
-                    Shopify 재고
+                    재고수량
                   </th>
                   <th className="px-8 py-5.5 font-bold text-[#5e6e82] text-left">
                     상태
@@ -437,36 +375,52 @@ export default function InventoryManagement() {
                     <td className="px-8 py-6 text-left">
                       <div className="flex items-center gap-4.5 max-w-md">
                         <div className="w-12 h-12 rounded-xl bg-gray-50 border border-gray-100/80 flex items-center justify-center overflow-hidden shrink-0 group-hover:scale-105 transition-transform">
-                          <Package size={20} className="text-gray-300" />
+                          {item.images?.[0] ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={item.images[0]}
+                              alt={item.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Package size={20} className="text-gray-300" />
+                          )}
                         </div>
                         <div className="flex flex-col text-left">
                           <span className="font-bold text-gray-900 group-hover:text-[#143617] transition-colors leading-snug text-[13px]">
                             {item.name}
                           </span>
-                          <span className="text-[11px] text-gray-400 mt-0.5 font-mono">
-                            {item.sku}
-                          </span>
                         </div>
                       </div>
                     </td>
 
+                    <td className="px-8 py-6 text-left">
+                      <div className="flex gap-1.5">
+                        {item.cafe24_product_no && (
+                          <span
+                            title="카페24"
+                            className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 text-[11px] font-bold"
+                          >
+                            카
+                          </span>
+                        )}
+                        {item.shopify_inventory_item_id && (
+                          <span
+                            title="Shopify"
+                            className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 text-[11px] font-bold"
+                          >
+                            쇼
+                          </span>
+                        )}
+                        {!item.cafe24_product_no &&
+                          !item.shopify_inventory_item_id && (
+                            <span className="text-gray-300 text-xs">-</span>
+                          )}
+                      </div>
+                    </td>
+
                     <td className="px-8 py-6 text-left font-extrabold text-gray-900 text-sm">
-                      {item.warehouse_stock.toLocaleString()}개
-                      <span className="block text-[10px] font-normal text-gray-400">
-                        (주문대기 {item.reserved_stock})
-                      </span>
-                    </td>
-
-                    <td className="px-8 py-6 text-left font-bold text-[#143617]">
-                      {item.available_stock.toLocaleString()}개
-                    </td>
-
-                    <td className="px-8 py-6 text-left font-semibold text-emerald-700">
-                      {item.cafe24_stock.toLocaleString()}개
-                    </td>
-
-                    <td className="px-8 py-6 text-left font-semibold text-indigo-700">
-                      {item.shopify_stock.toLocaleString()}개
+                      {item.stock.toLocaleString()}개
                     </td>
 
                     <td className="px-8 py-6 text-left">
@@ -481,12 +435,17 @@ export default function InventoryManagement() {
                     </td>
 
                     <td className="px-8 py-6 text-left text-gray-400 font-medium text-xs">
-                      {new Date(item.last_synced_at).toLocaleString("ko-KR", {
-                        month: "2-digit",
-                        day: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {item.stock_synced_at
+                        ? new Date(item.stock_synced_at).toLocaleString(
+                            "ko-KR",
+                            {
+                              month: "2-digit",
+                              day: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            },
+                          )
+                        : "-"}
                     </td>
 
                     <td
@@ -509,42 +468,55 @@ export default function InventoryManagement() {
         )}
       </div>
 
-      {/* 5. 재고 변경 이력 로그 섹션 */}
       <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6">
         <div className="flex items-center gap-2 mb-4">
           <History size={18} className="text-[#143617]" />
           <h3 className="text-base font-bold text-gray-900">재고 변경 이력</h3>
         </div>
         <div className="divide-y divide-gray-100">
-          {logs.map((log) => (
-            <div
-              key={log.id}
-              className="py-3.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs"
-            >
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-gray-900">
-                  {log.product_name}
-                </span>
-                <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded font-mono font-bold">
-                  {log.change_detail}
-                </span>
+          {logs.length === 0 ? (
+            <p className="py-6 text-xs text-gray-400 text-center">
+              아직 재고 변경 이력이 없습니다.
+            </p>
+          ) : (
+            logs.map((log) => (
+              <div
+                key={log.id}
+                className="py-3.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-gray-900">
+                    {log.product_name}
+                  </span>
+                  <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded font-mono font-bold">
+                    {log.change_detail}
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 text-gray-400">
+                  <span>변경자: {log.modifier}</span>
+                  <span className="font-mono">
+                    {log.created_at
+                      ? new Date(log.created_at).toLocaleString("ko-KR", {
+                          month: "2-digit",
+                          day: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "-"}
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-4 text-gray-400">
-                <span>변경자: {log.modifier}</span>
-                <span className="font-mono">{log.created_at}</span>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
-      {/* 6. 재고 수정 모달 (창고 재고와 채널 재고를 각각 독립적이고 안전하게 관리) */}
       {isEditModalOpen && editingItem && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl border border-gray-100 max-w-lg w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <Edit3 className="text-[#143617]" size={18} /> 재고 상세 수정
+                <Edit3 className="text-[#143617]" size={18} /> 재고 수정
               </h3>
               <button
                 onClick={() => setIsEditModalOpen(false)}
@@ -561,97 +533,44 @@ export default function InventoryManagement() {
               <p className="text-sm font-bold text-gray-900 mt-0.5">
                 {editingItem.name}
               </p>
-              <span className="text-[11px] text-gray-500 font-mono">
-                SKU: {editingItem.sku}
-              </span>
             </div>
 
             <div className="space-y-4 mb-6">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl border border-gray-200 bg-white">
-                  <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                    실제 보유 재고 (창고)
-                  </label>
-                  <input
-                    type="number"
-                    value={editWarehouseStock}
-                    onChange={(e) =>
-                      setEditWarehouseStock(Number(e.target.value))
-                    }
-                    className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-900 focus:outline-none"
-                  />
-                </div>
-                <div className="p-3 rounded-xl border border-gray-200 bg-white">
-                  <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                    주문 처리중 (예약)
-                  </label>
-                  <input
-                    type="number"
-                    value={editReservedStock}
-                    onChange={(e) =>
-                      setEditReservedStock(Number(e.target.value))
-                    }
-                    className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-900 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl border border-blue-100 bg-blue-50/50 flex justify-between items-center text-xs">
-                <span className="font-bold text-blue-900">
-                  판매 가능 재고 (계산됨)
-                </span>
-                <span className="font-extrabold text-blue-900 text-sm">
-                  {Math.max(0, editWarehouseStock - editReservedStock)}개
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <div className="p-3 rounded-xl border border-emerald-100 bg-emerald-50/50">
-                  <label className="block text-[11px] font-bold text-emerald-800 mb-1">
-                    카페24 연동 재고
-                  </label>
-                  <input
-                    type="number"
-                    value={editCafe24Stock}
-                    onChange={(e) => setEditCafe24Stock(Number(e.target.value))}
-                    className="w-full px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs font-bold text-emerald-900 focus:outline-none"
-                  />
-                </div>
-                <div className="p-3 rounded-xl border border-indigo-100 bg-indigo-50/50">
-                  <label className="block text-[11px] font-bold text-indigo-800 mb-1">
-                    Shopify 연동 재고
-                  </label>
-                  <input
-                    type="number"
-                    value={editShopifyStock}
-                    onChange={(e) =>
-                      setEditShopifyStock(Number(e.target.value))
-                    }
-                    className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs font-bold text-indigo-900 focus:outline-none"
-                  />
-                </div>
+              <div className="p-3 rounded-xl border border-gray-200 bg-white">
+                <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                  재고수량
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={editStock}
+                  onChange={(e) => setEditStock(Number(e.target.value))}
+                  className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-900 focus:outline-none"
+                />
               </div>
             </div>
 
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setIsEditModalOpen(false)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-xs font-bold text-gray-700 transition-colors cursor-pointer"
+                disabled={isSaving}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-xs font-bold text-gray-700 transition-colors cursor-pointer disabled:opacity-50"
               >
                 취소
               </button>
               <button
                 onClick={handleSaveInventory}
-                className="px-4 py-2 bg-[#143617] hover:bg-[#0d240f] rounded-xl text-xs font-bold text-white transition-colors flex items-center gap-1.5 cursor-pointer"
+                disabled={isSaving}
+                className="px-4 py-2 bg-[#143617] hover:bg-[#0d240f] rounded-xl text-xs font-bold text-white transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
-                <Check size={14} /> 저장 및 API 동기화
+                <Check size={14} />{" "}
+                {isSaving ? "저장 중..." : "저장 및 API 동기화"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 토스트 메시지 */}
       {toastMessage && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></div>

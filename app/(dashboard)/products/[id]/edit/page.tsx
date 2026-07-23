@@ -2,14 +2,16 @@
 
 import React from "react";
 import { useParams } from "next/navigation";
-import { FoodProductFormInput } from "../../new/food-product.schema";
-import FoodProductForm from "../../_components/food-product-form";
+import { FoodProductEditInput } from "../../_components/food-product.schema";
+import FoodProductEditForm from "../../_components/food-product-edit-form";
 
 export default function FoodProductEditPage() {
   const { id } = useParams<{ id: string }>();
   const [initialValues, setInitialValues] =
-    React.useState<FoodProductFormInput | null>(null);
-  const [productNo, setProductNo] = React.useState<number | null>(null);
+    React.useState<FoodProductEditInput | null>(null);
+  const [currentStock, setCurrentStock] = React.useState<number | undefined>(
+    undefined,
+  );
   const [shopifyProductId, setShopifyProductId] = React.useState<number | null>(
     null,
   );
@@ -30,13 +32,11 @@ export default function FoodProductEditPage() {
         return res.json();
       })
       .then(({ product }) => {
-        setProductNo(product.cafe24_product_no ?? null);
         setInitialValues({
           name: product.name,
           categoryNos: product.category_nos ?? [],
           price: product.price,
           cost: product.cost,
-          stock: product.stock,
           description: product.description ?? "",
           options: product.options ?? [],
           legalInfo: product.legal_info,
@@ -45,6 +45,9 @@ export default function FoodProductEditPage() {
           status: product.status,
           images: product.images ?? [],
         });
+        if (typeof product.stock === "number") {
+          setCurrentStock(product.stock);
+        }
         setShopifyProductId(product.shopify_product_id ?? null);
         setShopifyInventoryItemId(product.shopify_inventory_item_id ?? null);
         setShopifyLocationId(product.shopify_location_id ?? null);
@@ -57,11 +60,11 @@ export default function FoodProductEditPage() {
     return <div className="p-8 text-slate-400">불러오는 중...</div>;
 
   return (
-    <FoodProductForm
-      mode="edit"
+    <FoodProductEditForm
       id={id ?? undefined}
       productRowId={id}
       initialValues={initialValues}
+      currentStock={currentStock}
       shopifyProductId={shopifyProductId ?? undefined}
       shopifyInventoryItemId={shopifyInventoryItemId ?? undefined}
       shopifyLocationId={shopifyLocationId ?? undefined}

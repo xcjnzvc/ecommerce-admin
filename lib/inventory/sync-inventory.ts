@@ -123,6 +123,12 @@ export async function syncInventory(): Promise<{
       return;
     }
 
+    await supabase
+      .from("sync_error_log")
+      .update({ resolved: true })
+      .eq("product_no", numericProductNo)
+      .eq("resolved", false);
+
     console.log({
       row,
       inventoryItemId: row?.shopify_inventory_item_id,

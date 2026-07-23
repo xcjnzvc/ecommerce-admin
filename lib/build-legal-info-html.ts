@@ -1,4 +1,4 @@
-import { FoodProductFormValues } from "@/app/(dashboard)/products/new/food-product.schema";
+import { FoodProductFormValues } from "@/app/(dashboard)/products/_components/food-product.schema";
 
 export function buildLegalInfoHtml(
   legalInfo: FoodProductFormValues["legalInfo"],

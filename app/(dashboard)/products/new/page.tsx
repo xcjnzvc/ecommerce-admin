@@ -1,5 +1,5 @@
-import FoodProductForm from "../_components/food-product-form";
+import FoodProductCreateForm from "../_components/food-product-create-form";
 
 export default function FoodProductNewPage() {
-  return <FoodProductForm mode="create" />;
+  return <FoodProductCreateForm />;
 }
