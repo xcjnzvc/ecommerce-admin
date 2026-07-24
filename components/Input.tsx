@@ -114,9 +114,9 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             className="absolute top-[50%] right-[12px] -translate-y-1/2"
           >
             {showPassword ? (
-              <EyeOff size={20} color={borderColor} />
-            ) : (
               <Eye size={20} color={borderColor} />
+            ) : (
+              <EyeOff size={20} color={borderColor} />
             )}
           </button>
         )}

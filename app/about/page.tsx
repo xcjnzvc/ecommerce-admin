@@ -21,12 +21,109 @@ const features = [
     desc: "등록된 상품을 다시 불러와 수정하면 카페24와 Supabase가 함께 갱신됩니다. 삭제는 카페24 요청이 실패해도 내부 데이터는 정리되도록 처리했습니다.",
   },
   {
+    badge: "재고",
+    badgeColor: "bg-violet-50 text-violet-700",
+    title: "재고 자동 동기화 & 이력 관리",
+    desc: "카페24 실재고를 기준으로 매일 자동 동기화합니다. 관리자가 수정한 재고는 카페24와 Shopify에 동시에 반영되며, 동기화 실패는 별도 로그로 관리하고 성공 시 자동 해결 처리합니다.",
+  },
+  {
     badge: "인증",
     badgeColor: "bg-blue-50 text-blue-700",
     title: "카페24 OAuth 연동 & 토큰 자동 갱신",
     desc: "카페24 OAuth 인증 후 access_token/refresh_token을 Supabase에 저장하고, API 요청마다 만료 여부를 확인해 자동으로 갱신합니다.",
   },
 ];
+
+const productFlow = [
+  {
+    step: "01",
+    title: "상품 등록",
+    desc: "법정 고시정보 포함 폼 작성",
+  },
+  {
+    step: "02",
+    title: "Supabase 저장",
+    desc: "우리 DB에 원본 데이터 우선 저장",
+  },
+  {
+    step: "03",
+    title: "카페24 등록",
+    desc: "이미지·카테고리 포함 API 순차 호출",
+  },
+  {
+    step: "04",
+    title: "번호 매핑",
+    desc: "카페24 상품번호를 Supabase에 재기록",
+  },
+  {
+    step: "05",
+    title: "목록 반영",
+    desc: "실시간 조회 API로 최신 상태 노출",
+  },
+];
+
+const inventoryFlow = [
+  {
+    step: "01",
+    title: "카페24 실재고",
+    desc: "채널 기준 재고를 조회",
+  },
+  {
+    step: "02",
+    title: "자동 동기화(Cron)",
+    desc: "매일 자동으로 동기화 실행",
+  },
+  {
+    step: "03",
+    title: "Supabase",
+    desc: "products.stock에 반영",
+  },
+  {
+    step: "04",
+    title: "Shopify 재고 반영",
+    desc: "동일 재고를 Shopify에 반영",
+  },
+  {
+    step: "05",
+    title: "관리자 수동 수정",
+    desc: "어드민에서 재고 조정",
+  },
+  {
+    step: "06",
+    title: "전 채널 반영",
+    desc: "카페24 + Shopify 동시 반영",
+  },
+];
+
+function FlowSteps({
+  items,
+}: {
+  items: { step: string; title: string; desc: string }[];
+}) {
+  return (
+    <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-2 text-sm flex-wrap">
+      {items.map((item, i, arr) => (
+        <div
+          key={item.step}
+          className="flex md:flex-row flex-col items-start md:items-center gap-2 md:gap-2"
+        >
+          <div className="bg-gray-50 rounded-xl px-4 py-3 min-w-[120px]">
+            <p className="text-[10px] font-semibold text-gray-400 mb-1">
+              {item.step}
+            </p>
+            <p className="font-semibold text-gray-900 text-sm">{item.title}</p>
+            <p className="text-xs text-gray-500 mt-1 leading-snug">
+              {item.desc}
+            </p>
+          </div>
+          {i < arr.length - 1 && (
+            <span className="text-gray-300 hidden md:block text-lg">→</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function AboutPage() {
   return (
@@ -44,9 +141,6 @@ export default function AboutPage() {
 
       {/* ─── 1. 문제 ─────────────────────────────────── */}
       <section className="mb-20">
-        <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase mb-3">
-          문제
-        </p>
         <h1 className="text-4xl font-bold leading-tight mb-5">
           여러 쇼핑몰에 상품을 각각 등록하는
           <br />
@@ -55,8 +149,12 @@ export default function AboutPage() {
         <p className="text-gray-600 text-base leading-relaxed max-w-2xl">
           카페24, 쿠팡, 네이버 등 채널마다 따로 상품을 등록·관리해야 하는
           구조를, 하나의 어드민에서 등록하면 여러 채널에 동시 반영되도록 만들고
-          있습니다. 사업자 등록 제약으로 현재는 카페24 연동을 먼저 완성 중이며,
-          이후 다른 채널로 확장할 수 있도록 어댑터 구조로 설계했습니다.
+          있습니다. 쿠팡·네이버는 테스트 모드 없이 사업자 등록과 실제 판매
+          개시가 선행되어야 API 연동이 가능해, 우선 카페24를 실채널로 먼저
+          연동했습니다. 다만 카페24 하나만으로는 "여러 채널에 동시 등록"이라는
+          핵심 구조를 검증할 수 없어, 테스트 환경 진입이 자유로운 해외 채널인
+          Shopify를 두 번째 채널로 붙여 멀티채널 상품 등록뿐 아니라 재고
+          동기화 구조까지 먼저 완성했습니다.
         </p>
       </section>
 
@@ -72,15 +170,15 @@ export default function AboutPage() {
             { label: "디자인", desc: "어드민 UI 직접 설계 및 구현" },
             {
               label: "프론트엔드",
-              desc: "Next.js 기반 상품 목록/등록 화면, 상태 관리",
+              desc: "Next.js 기반 상품 목록/등록·재고 관리 화면, 상태 관리",
             },
             {
               label: "백엔드",
-              desc: "Next.js API Routes로 카페24 API 연동 레이어 구현 (별도 서버 없이 route.ts 기반 경량 백엔드)",
+              desc: "Next.js API Routes로 상품 CRUD, 재고 동기화, 자동 동기화(Cron), 동기화 로그까지 구현 (별도 서버 없이 route.ts 기반 경량 백엔드)",
             },
             {
               label: "외부 연동",
-              desc: "카페24 OAuth 인증, 토큰 자동 갱신, 상품 CRUD API 연동",
+              desc: "카페24 OAuth 인증·토큰 자동 갱신, Shopify 재고 반영, 상품 CRUD API 연동",
             },
           ].map((item) => (
             <div key={item.label} className="flex gap-4 items-start">
@@ -102,60 +200,31 @@ export default function AboutPage() {
         <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase mb-8">
           핵심 흐름
         </p>
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-2 text-sm">
-          {[
-            {
-              step: "01",
-              title: "상품 등록",
-              desc: "법정 고시정보 포함 폼 작성",
-            },
-            {
-              step: "02",
-              title: "Supabase 저장",
-              desc: "우리 DB에 원본 데이터 우선 저장",
-            },
-            {
-              step: "03",
-              title: "카페24 등록",
-              desc: "이미지·카테고리 포함 API 순차 호출",
-            },
-            {
-              step: "04",
-              title: "번호 매핑",
-              desc: "카페24 상품번호를 Supabase에 재기록",
-            },
-            {
-              step: "05",
-              title: "목록 반영",
-              desc: "실시간 조회 API로 최신 상태 노출",
-            },
-          ].map((item, i, arr) => (
-            <div
-              key={item.step}
-              className="flex md:flex-row flex-col items-start md:items-center gap-2 md:gap-2"
-            >
-              <div className="bg-gray-50 rounded-xl px-4 py-3 min-w-[120px]">
-                <p className="text-[10px] font-semibold text-gray-400 mb-1">
-                  {item.step}
-                </p>
-                <p className="font-semibold text-gray-900 text-sm">
-                  {item.title}
-                </p>
-                <p className="text-xs text-gray-500 mt-1 leading-snug">
-                  {item.desc}
-                </p>
-              </div>
-              {i < arr.length - 1 && (
-                <span className="text-gray-300 hidden md:block text-lg">→</span>
-              )}
-            </div>
-          ))}
+
+        <div className="mb-10">
+          <p className="text-sm font-semibold text-gray-900 mb-4">
+            상품 등록 Flow
+          </p>
+          <FlowSteps items={productFlow} />
+          <p className="text-xs text-gray-400 mt-4 leading-relaxed">
+            외부 채널이 늘어나도 lib/api/ 아래에 어댑터만 추가하면 되도록,
+            프론트 → API Routes → 서비스 레이어(cafe24.ts) → 외부 API 순의
+            레이어드 구조로 설계했습니다.
+          </p>
         </div>
-        <p className="text-xs text-gray-400 mt-4 leading-relaxed">
-          외부 채널이 늘어나도 lib/api/ 아래에 어댑터만 추가하면 되도록, 프론트
-          → API Routes → 서비스 레이어(cafe24.ts) → 외부 API 순의 레이어드
-          구조로 설계했습니다.
-        </p>
+
+        <div>
+          <p className="text-sm font-semibold text-gray-900 mb-4">
+            재고 동기화 Flow
+          </p>
+          <FlowSteps items={inventoryFlow} />
+          <p className="text-xs text-gray-400 mt-4 leading-relaxed">
+            카페24 실재고를 Single Source of Truth로 두고, 자동 동기화(Cron)가{" "}
+            <code className="text-gray-500">products.stock</code>을 갱신한 뒤
+            Shopify에 재고를 반영합니다. 관리자 수동 수정도 동일하게 전 채널에
+            반영됩니다.
+          </p>
+        </div>
       </section>
 
       <hr className="border-gray-100 mb-20" />
@@ -190,7 +259,94 @@ export default function AboutPage() {
 
       <hr className="border-gray-100 mb-20" />
 
-      {/* ─── 5. 기술 선택 이유 ────────────────────────── */}
+      {/* ─── 5. 설계 판단 ────────────────────────── */}
+      <section className="mb-20">
+        <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase mb-8">
+          설계 판단
+        </p>
+        <div className="flex flex-col gap-5">
+          <div className="border border-gray-100 rounded-xl px-5 py-5">
+            <p className="font-semibold text-gray-900 text-sm mb-4">
+              카페24 삭제 실패 시에도 내부 DB는 정리하기로 한 이유
+            </p>
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-3 items-start">
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 bg-red-50 text-red-600">
+                  배경
+                </span>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  상품 삭제는 카페24 API 호출과 Supabase 삭제, 두 단계로
+                  이루어진다. 카페24 쪽 요청이 실패하는 경우(이미 삭제됐거나
+                  일시적 오류) 두 데이터베이스의 정합성을 어떻게 맞출지 결정해야
+                  했다.
+                </p>
+              </div>
+              <div className="flex gap-3 items-start">
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 bg-orange-50 text-orange-600">
+                  고민
+                </span>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  카페24 삭제가 실패했을 때 Supabase도 그대로 두면 안전해
+                  보이지만, 실제로는 사용자가 어드민에서 삭제 버튼을 눌렀는데
+                  목록에 계속 남아있는 것이 더 혼란스러운 상황이라고 판단했다.
+                </p>
+              </div>
+              <div className="flex gap-3 items-start">
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 bg-green-50 text-green-700">
+                  결정
+                </span>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  카페24 삭제 요청은 시도하되 실패해도 흐름을 막지 않고,
+                  Supabase 데이터는 무조건 정리하도록 했다. 카페24 쪽에 남아있을
+                  수 있는 데이터는 이후 별도로 확인할 수 있게 콘솔 로그로
+                  남겼다.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="border border-gray-100 rounded-xl px-5 py-5">
+            <p className="font-semibold text-gray-900 text-sm mb-4">
+              재고 데이터를 하나의 테이블로 통일하기로 한 이유
+            </p>
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-3 items-start">
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 bg-red-50 text-red-600">
+                  배경
+                </span>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  재고 관리 화면을 먼저 설계하면서 inventory 테이블을 따로
+                  만들었다. 창고재고·예약재고·채널재고 등을 분리하려고 했다.
+                </p>
+              </div>
+              <div className="flex gap-3 items-start">
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 bg-orange-50 text-orange-600">
+                  고민
+                </span>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  이미 운영 중이던 동기화 크론은 products.stock을 기준으로 돌고
+                  있었다. 상품 등록은 inventory에 저장되는데 크론은 products만
+                  읽으므로 재고가 항상 0처럼 보였다. 두 저장소가 존재하면 어느
+                  쪽이 최신인지 보장할 수도 없었다.
+                </p>
+              </div>
+              <div className="flex gap-3 items-start">
+                <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 bg-green-50 text-green-700">
+                  결정
+                </span>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  inventory를 폐기하고 products.stock을 Single Source of Truth로
+                  삼기로 했다. 카페24 실재고를 그대로 반영하는 단순한 모델로
+                  변경했고, 동기화와 관리자 수정 모두 products.stock 하나만
+                  사용하도록 구조를 정리했다.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── 6. 기술 선택 이유 ────────────────────────── */}
       <section className="mb-20">
         <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase mb-3">
           기술 선택 이유
@@ -254,54 +410,9 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ─── 5-2. 설계 판단 ────────────────────────── */}
-      <section className="mb-20">
-        <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase mb-8">
-          설계 판단
-        </p>
-        <div className="border border-gray-100 rounded-xl px-5 py-5">
-          <p className="font-semibold text-gray-900 text-sm mb-4">
-            카페24 삭제 실패 시에도 내부 DB는 정리하기로 한 이유
-          </p>
-          <div className="flex flex-col gap-3">
-            <div className="flex gap-3 items-start">
-              <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 bg-red-50 text-red-600">
-                배경
-              </span>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                상품 삭제는 카페24 API 호출과 Supabase 삭제, 두 단계로
-                이루어진다. 카페24 쪽 요청이 실패하는 경우(이미 삭제됐거나
-                일시적 오류) 두 데이터베이스의 정합성을 어떻게 맞출지 결정해야
-                했다.
-              </p>
-            </div>
-            <div className="flex gap-3 items-start">
-              <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 bg-orange-50 text-orange-600">
-                고민
-              </span>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                카페24 삭제가 실패했을 때 Supabase도 그대로 두면 안전해
-                보이지만, 실제로는 사용자가 어드민에서 삭제 버튼을 눌렀는데
-                목록에 계속 남아있는 것이 더 혼란스러운 상황이라고 판단했다.
-              </p>
-            </div>
-            <div className="flex gap-3 items-start">
-              <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 bg-green-50 text-green-700">
-                결정
-              </span>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                카페24 삭제 요청은 시도하되 실패해도 흐름을 막지 않고, Supabase
-                데이터는 무조건 정리하도록 했다. 카페24 쪽에 남아있을 수 있는
-                데이터는 이후 별도로 확인할 수 있게 콘솔 로그로 남겼다.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <hr className="border-gray-100 mb-20" />
 
-      {/* ─── 6. 트러블슈팅 ───────────────────────────── */}
+      {/* ─── 7. 트러블슈팅 ───────────────────────────── */}
       <section className="mb-20">
         <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase mb-8">
           트러블슈팅
@@ -323,6 +434,22 @@ export default function AboutPage() {
               cause:
                 "이미지 업로드 API는 접근 가능한 절대 URL을 반환하지만, 상품에 이미지를 연결하는 API(list_image 등)는 절대 URL이 아닌 서버 내부 상대 경로만 허용한다는 걸 문서만으로는 바로 알기 어려웠다.",
               fix: "정규식으로 업로드 응답에서 호스트를 제외한 상대 경로만 추출해, 상품 이미지 필드에 그 값만 전달하도록 수정했다.",
+            },
+            {
+              label: "동기화 실패 로그가 해결 후에도 남는 구조적 결함",
+              problem:
+                '카페24 조회가 실패하면 sync_error_log에 오류가 기록되도록 만들어뒀는데, 이후 동기화가 정상화돼도 그 기록을 자동으로 해결 처리하는 코드가 없어서 재고 화면에 "동기화 오류"가 영구히 남을 수 있는 구조였다.',
+              cause:
+                "실패를 기록하는 로직만 만들고, 성공 시 과거 실패 기록을 되돌리는 로직을 빠뜨렸다.",
+              fix: "동기화 성공 분기에서 해당 상품의 미해결(resolved=false) 로그를 찾아 자동으로 resolved 처리하도록 추가했다.",
+            },
+            {
+              label: "inventory 테이블 구조가 동기화 로직과 충돌한 문제",
+              problem:
+                "상품은 저장되는데 재고만 저장되지 않았고, 동기화 크론이 읽는 값과 등록 시 쓰는 저장소가 서로 달랐다.",
+              cause:
+                "inventory 테이블을 따로 두었지만 동기화 로직은 products.stock만 읽고 있었다. inventory에는 RLS 정책도 없어 저장 자체가 막히는 증상이 겹쳤다.",
+              fix: "RLS 정책만 추가하는 대신, inventory를 제거하고 products.stock을 Single Source of Truth로 통합해 구조 자체를 바로잡았다.",
             },
           ].map((item) => (
             <div
@@ -369,34 +496,36 @@ export default function AboutPage() {
 
       <hr className="border-gray-100 mb-20" />
 
-      {/* ─── 7. 진행 상황 ──────────────────────────────────── */}
+      {/* ─── 8. 진행 상황 ──────────────────────────────────── */}
       <section className="mb-20">
         <p className="text-xs font-semibold tracking-widest text-gray-400 uppercase mb-4">
           진행 상황
         </p>
         <div className="border border-gray-100 rounded-xl px-5 py-5">
           <div className="flex items-center gap-2 mb-4">
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
             <span className="text-sm font-semibold text-gray-900">
-              현재 개발 중
+              현재 구현 완료
             </span>
           </div>
           <p className="text-sm text-gray-500 leading-relaxed mb-3">
-            상품 조회·등록·수정·삭제는 카페24 연동까지 완료했습니다. 다음 단계로
-            재고 자동 동기화(주문 발생 시 재고 반영)를 설계하던 중, 카페24 주문
-            API는 개인정보가 포함되어 있어 일반 상품/카테고리 스코프와 달리 앱
-            심사를 통과해야 실제 권한이 부여된다는 걸 확인했습니다.
+            상품 조회·등록·수정·삭제와 카페24·Shopify 연동을 구현했습니다.
+            카페24 실재고를 기준으로 매일 자동 동기화하며, Shopify에도 동일
+            재고를 반영합니다.
+          </p>
+          <p className="text-sm text-gray-500 leading-relaxed mb-3">
+            동기화 실패는 로그 테이블에 기록하고, 다음 성공 시 자동 해결
+            처리하며, 관리자가 재고를 수정하면 모든 채널에 동시에 반영하고 변경
+            이력을 저장하도록 구현했습니다.
           </p>
           <p className="text-sm text-gray-500 leading-relaxed">
-            포트폴리오 목적상 심사까지 진행할지, 목업 데이터로 동일한 동기화
-            로직을 검증하는 방향으로 갈지 고민 중입니다. 커서 기반 폴링, 실패
-            로그 테이블, 스코프 분리 등 동기화에 필요한 구조는 이미 설계해 둔
-            상태입니다.
+            다음 단계는 웹훅 기반 실시간 동기화와 스마트스토어 등 추가 채널
+            확장입니다.
           </p>
         </div>
       </section>
 
-      {/* ─── 8. 링크 ──────────────────────────────────── */}
+      {/* ─── 9. 링크 ──────────────────────────────────── */}
       <section className="flex gap-4">
         <a
           href="https://github.com/xcjnzvc/ecommerce-admin"

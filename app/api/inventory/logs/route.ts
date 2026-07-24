@@ -12,7 +12,7 @@ export async function GET() {
       .from("inventory_logs")
       .select("id, product_name, old_stock, new_stock, created_at")
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(100);
 
     if (error) throw error;
 

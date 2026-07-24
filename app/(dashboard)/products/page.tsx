@@ -19,6 +19,11 @@ import {
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import Pagination, { paginateItems } from "@/app/components/Pagination";
+import SummaryCards from "@/app/components/SummaryCards";
+import ChannelBadges from "@/app/components/ChannelBadges";
+
+const PAGE_SIZE = 10;
 
 interface Product {
   id: string;
@@ -51,6 +56,7 @@ export default function ProductList() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("전체");
+  const [page, setPage] = useState(1);
 
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
@@ -141,9 +147,13 @@ export default function ProductList() {
     return matchesStatus && matchesSearch;
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedProducts = paginateItems(filteredProducts, currentPage, PAGE_SIZE);
+
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedProductIds(filteredProducts.map((p) => p.id));
+      setSelectedProductIds(pagedProducts.map((p) => p.id));
     } else {
       setSelectedProductIds([]);
     }
@@ -225,36 +235,18 @@ export default function ProductList() {
       </div>
 
       {/* 2. 대시보드 스타일 핵심 요약 카드 영역 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        {summary.map((item) => (
-          <div
-            key={item.label}
-            onClick={() =>
-              setSelectedStatus(
-                item.label === "전체 상품" || item.label === "멀티채널"
-                  ? "전체"
-                  : item.label,
-              )
-            }
-            className="cursor-pointer p-5 rounded-2xl border border-[#e2e2e2] bg-white text-gray-900 transition-all duration-200 transform hover:-translate-y-0.5 hover:shadow-md shadow-sm"
-          >
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                {item.label}
-              </span>
-              <div className={`p-1.5 rounded-lg ${item.iconBg}`}>
-                {item.icon}
-              </div>
-            </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-3xl font-bold tracking-tight">
-                {isLoading ? "-" : item.count.toLocaleString()}
-              </span>
-              <span className="text-sm text-gray-500">건</span>
-            </div>
-          </div>
-        ))}
-      </div>
+      <SummaryCards
+        items={summary}
+        isLoading={isLoading}
+        onItemClick={(item) => {
+          setSelectedStatus(
+            item.label === "전체 상품" || item.label === "멀티채널"
+              ? "전체"
+              : item.label,
+          );
+          setPage(1);
+        }}
+      />
 
       {/* 3. 통합 검색 및 필터 컨트롤러 */}
       <div className="flex flex-col gap-4 mb-6">
@@ -265,7 +257,10 @@ export default function ProductList() {
               return (
                 <button
                   key={status}
-                  onClick={() => setSelectedStatus(status)}
+                  onClick={() => {
+                    setSelectedStatus(status);
+                    setPage(1);
+                  }}
                   className={`px-5 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
                     isActive
                       ? "bg-[#143617] text-white shadow-sm"
@@ -288,7 +283,10 @@ export default function ProductList() {
                 type="text"
                 placeholder="검색어 입력..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setPage(1);
+                }}
                 className="w-full pl-9 pr-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#143617] focus:border-[#143617] transition-all"
               />
             </div>
@@ -341,8 +339,10 @@ export default function ProductList() {
                     <input
                       type="checkbox"
                       checked={
-                        filteredProducts.length > 0 &&
-                        selectedProductIds.length === filteredProducts.length
+                        pagedProducts.length > 0 &&
+                        pagedProducts.every((p) =>
+                          selectedProductIds.includes(p.id),
+                        )
                       }
                       onChange={handleSelectAll}
                       className="rounded border-gray-300 text-[#143617] focus:ring-[#143617] w-4 h-4 cursor-pointer"
@@ -372,7 +372,7 @@ export default function ProductList() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100/70">
-                {filteredProducts.map((product) => {
+                {pagedProducts.map((product) => {
                   const isChecked = selectedProductIds.includes(product.id);
                   return (
                     <tr
@@ -409,7 +409,7 @@ export default function ProductList() {
                             )}
                           </div>
                           <div className="flex flex-col text-left">
-                            <span className="font-bold text-gray-900 group-hover:text-[#143617] transition-colors leading-snug text-[14px]">
+                            <span className="font-bold text-gray-900 group-hover:text-[#143617] transition-colors leading-snug text-sm">
                               {product.name}
                             </span>
                           </div>
@@ -418,32 +418,14 @@ export default function ProductList() {
 
                       {/* 채널 태그 */}
                       <td className="px-8 py-8.5 text-left">
-                        <div className="flex gap-1.5">
-                          {product.cafe24_product_no && (
-                            <span
-                              title="카페24"
-                              className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 text-[11px] font-bold"
-                            >
-                              카
-                            </span>
-                          )}
-                          {product.shopify_product_id && (
-                            <span
-                              title="Shopify"
-                              className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 text-[11px] font-bold"
-                            >
-                              쇼
-                            </span>
-                          )}
-                          {!product.cafe24_product_no &&
-                            !product.shopify_product_id && (
-                              <span className="text-gray-300 text-xs">-</span>
-                            )}
-                        </div>
+                        <ChannelBadges
+                          cafe24={!!product.cafe24_product_no}
+                          shopify={!!product.shopify_product_id}
+                        />
                       </td>
 
                       {/* 가격 */}
-                      <td className="px-8 py-8.5 text-left font-extrabold text-gray-900 text-sm md:text-base">
+                      <td className="px-8 py-8.5 text-left font-bold text-gray-900 text-sm">
                         {Number(product.price).toLocaleString()}원
                       </td>
 
@@ -460,12 +442,12 @@ export default function ProductList() {
                       {/* 재고 */}
                       <td className="px-8 py-8.5 text-left">
                         <span
-                          className={`font-semibold text-sm ${
+                          className={`font-bold text-sm ${
                             product.stock === 0
                               ? "text-red-600"
                               : product.stock <= 5
                                 ? "text-amber-600"
-                                : "text-gray-700"
+                                : "text-gray-900"
                           }`}
                         >
                           {product.stock.toLocaleString()}개
@@ -473,7 +455,7 @@ export default function ProductList() {
                       </td>
 
                       {/* 등록일 */}
-                      <td className="px-8 py-8.5 text-left text-gray-400 font-semibold text-xs">
+                      <td className="px-8 py-8.5 text-left text-gray-400 font-medium text-xs">
                         {new Date(product.created_at).toLocaleDateString(
                           "ko-KR",
                           {
@@ -532,6 +514,12 @@ export default function ProductList() {
                 })}
               </tbody>
             </table>
+            <Pagination
+              page={currentPage}
+              totalItems={filteredProducts.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+            />
           </div>
         )}
       </div>

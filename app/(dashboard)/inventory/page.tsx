@@ -13,6 +13,12 @@ import {
   Check,
   AlertCircle,
 } from "lucide-react";
+import Pagination, { paginateItems } from "@/app/components/Pagination";
+import SummaryCards from "@/app/components/SummaryCards";
+import ChannelBadges from "@/app/components/ChannelBadges";
+
+const PAGE_SIZE = 10;
+const LOG_PAGE_SIZE = 10;
 
 interface InventoryItem {
   id: string;
@@ -55,6 +61,8 @@ export default function InventoryManagement() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("전체");
+  const [page, setPage] = useState(1);
+  const [logPage, setLogPage] = useState(1);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
@@ -158,6 +166,17 @@ export default function InventoryManagement() {
     return matchesStatus && matchesSearch;
   });
 
+  const itemsTotalPages = Math.max(
+    1,
+    Math.ceil(filteredItems.length / PAGE_SIZE),
+  );
+  const currentPage = Math.min(page, itemsTotalPages);
+  const pagedItems = paginateItems(filteredItems, currentPage, PAGE_SIZE);
+
+  const logsTotalPages = Math.max(1, Math.ceil(logs.length / LOG_PAGE_SIZE));
+  const currentLogPage = Math.min(logPage, logsTotalPages);
+  const pagedLogs = paginateItems(logs, currentLogPage, LOG_PAGE_SIZE);
+
   const handleOpenEditModal = (item: InventoryItem) => {
     setEditingItem(item);
     setEditStock(item.stock);
@@ -252,38 +271,19 @@ export default function InventoryManagement() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        {summary.map((item) => (
-          <div
-            key={item.label}
-            onClick={() =>
-              setSelectedStatus(
-                item.label === "관리 상품 수" || item.label === "총 보유 재고"
-                  ? "전체"
-                  : item.label === "품절 상품"
-                    ? "품절"
-                    : "동기화오류",
-              )
-            }
-            className="cursor-pointer p-5 rounded-2xl border border-[#e2e2e2] bg-white text-gray-900 transition-all duration-200 transform hover:-translate-y-0.5 hover:shadow-md shadow-sm"
-          >
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                {item.label}
-              </span>
-              <div className={`p-1.5 rounded-lg ${item.iconBg}`}>
-                {item.icon}
-              </div>
-            </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-3xl font-bold tracking-tight">
-                {item.count.toLocaleString()}
-              </span>
-              <span className="text-sm text-gray-500">{item.unit}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+      <SummaryCards
+        items={summary}
+        onItemClick={(item) => {
+          setSelectedStatus(
+            item.label === "관리 상품 수" || item.label === "총 보유 재고"
+              ? "전체"
+              : item.label === "품절 상품"
+                ? "품절"
+                : "동기화오류",
+          );
+          setPage(1);
+        }}
+      />
 
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-transparent">
@@ -293,7 +293,10 @@ export default function InventoryManagement() {
               return (
                 <button
                   key={status}
-                  onClick={() => setSelectedStatus(status)}
+                  onClick={() => {
+                    setSelectedStatus(status);
+                    setPage(1);
+                  }}
                   className={`px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
                     isActive
                       ? "bg-[#143617] text-white shadow-sm"
@@ -316,7 +319,10 @@ export default function InventoryManagement() {
                 type="text"
                 placeholder="상품명 검색..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setPage(1);
+                }}
                 className="w-full pl-9 pr-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#143617] focus:border-[#143617] transition-all"
               />
             </div>
@@ -366,7 +372,7 @@ export default function InventoryManagement() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100/70">
-                {filteredItems.map((item) => (
+                {pagedItems.map((item) => (
                   <tr
                     key={item.id}
                     onClick={() => handleOpenEditModal(item)}
@@ -387,7 +393,7 @@ export default function InventoryManagement() {
                           )}
                         </div>
                         <div className="flex flex-col text-left">
-                          <span className="font-bold text-gray-900 group-hover:text-[#143617] transition-colors leading-snug text-[13px]">
+                          <span className="font-bold text-gray-900 group-hover:text-[#143617] transition-colors leading-snug text-sm">
                             {item.name}
                           </span>
                         </div>
@@ -395,31 +401,13 @@ export default function InventoryManagement() {
                     </td>
 
                     <td className="px-8 py-6 text-left">
-                      <div className="flex gap-1.5">
-                        {item.cafe24_product_no && (
-                          <span
-                            title="카페24"
-                            className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 text-[11px] font-bold"
-                          >
-                            카
-                          </span>
-                        )}
-                        {item.shopify_inventory_item_id && (
-                          <span
-                            title="Shopify"
-                            className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-indigo-100 text-indigo-700 text-[11px] font-bold"
-                          >
-                            쇼
-                          </span>
-                        )}
-                        {!item.cafe24_product_no &&
-                          !item.shopify_inventory_item_id && (
-                            <span className="text-gray-300 text-xs">-</span>
-                          )}
-                      </div>
+                      <ChannelBadges
+                        cafe24={!!item.cafe24_product_no}
+                        shopify={!!item.shopify_inventory_item_id}
+                      />
                     </td>
 
-                    <td className="px-8 py-6 text-left font-extrabold text-gray-900 text-sm">
+                    <td className="px-8 py-6 text-left font-bold text-gray-900 text-sm">
                       {item.stock.toLocaleString()}개
                     </td>
 
@@ -464,6 +452,12 @@ export default function InventoryManagement() {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={currentPage}
+              totalItems={filteredItems.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+            />
           </div>
         )}
       </div>
@@ -479,7 +473,7 @@ export default function InventoryManagement() {
               아직 재고 변경 이력이 없습니다.
             </p>
           ) : (
-            logs.map((log) => (
+            pagedLogs.map((log) => (
               <div
                 key={log.id}
                 className="py-3.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs"
@@ -509,6 +503,13 @@ export default function InventoryManagement() {
             ))
           )}
         </div>
+        <Pagination
+          page={currentLogPage}
+          totalItems={logs.length}
+          pageSize={LOG_PAGE_SIZE}
+          onPageChange={setLogPage}
+          className="!border-t-0 mt-2 px-0"
+        />
       </div>
 
       {isEditModalOpen && editingItem && (
