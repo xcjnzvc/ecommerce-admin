@@ -2,12 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  Search,
   Download,
   Package,
   CheckCircle2,
-  Filter,
-  ArrowUpDown,
   MoreHorizontal,
   X,
   AlertCircle,
@@ -19,6 +16,7 @@ import {
 import SummaryCards from "@/app/components/SummaryCards";
 import ChannelBadges from "@/app/components/ChannelBadges";
 import Pagination, { paginateItems } from "@/app/components/Pagination";
+import ListFilterBar from "@/app/components/ListFilterBar";
 import {
   isInternalOrderStatus,
   type InternalOrderStatus,
@@ -26,6 +24,15 @@ import {
 } from "@/lib/orders/types";
 
 const PAGE_SIZE = 6;
+
+const ORDER_STATUS_TABS = [
+  { label: "전체", value: "전체" },
+  { label: "결제완료", value: "결제완료" },
+  { label: "배송준비중", value: "배송준비중" },
+  { label: "배송중", value: "배송중" },
+  { label: "배송완료", value: "배송완료" },
+  { label: "취소/반품/교환", value: "CS" },
+] as const;
 
 function normalizeOrder(raw: Order): Order {
   return {
@@ -324,70 +331,24 @@ export default function OrderList() {
         }}
       />
 
-      {/* 3. 통합 검색 및 필터 컨트롤러 */}
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-transparent">
-          <div className="inline-flex items-center p-1 bg-[#eceff1]/50 border border-gray-200/40 rounded-xl w-fit self-start overflow-x-auto">
-            {[
-              "전체",
-              "결제완료",
-              "배송준비중",
-              "배송중",
-              "배송완료",
-              "취소/반품/교환",
-            ].map((status) => {
-              const isActive =
-                selectedStatus === status ||
-                (status === "취소/반품/교환" && selectedStatus === "CS");
-              return (
-                <button
-                  key={status}
-                  onClick={() => {
-                    setSelectedStatus(
-                      status === "취소/반품/교환" ? "CS" : status,
-                    );
-                    setPage(1);
-                  }}
-                  className={`px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-                    isActive
-                      ? "bg-[#143617] text-white shadow-sm"
-                      : "text-[#5e6e82] hover:text-[#143617] bg-transparent"
-                  }`}
-                >
-                  {status}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 bg-transparent">
-            <div className="relative min-w-[240px] flex-1 md:flex-initial">
-              <Search
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-                size={14}
-              />
-              <input
-                type="text"
-                placeholder="주문번호, 상품명 검색..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full pl-9 pr-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#143617] focus:border-[#143617] transition-all"
-              />
-            </div>
-            <button className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-semibold text-[#5e6e82] shadow-sm transition-all">
-              <Filter size={13} className="text-gray-400" />
-              필터
-            </button>
-            <button className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-semibold text-[#5e6e82] shadow-sm transition-all">
-              <ArrowUpDown size={13} className="text-gray-400" />
-              정렬
-            </button>
-          </div>
-        </div>
-      </div>
+      <ListFilterBar
+        statusTabs={[...ORDER_STATUS_TABS]}
+        selectedStatus={selectedStatus}
+        onStatusChange={(value) => {
+          setSelectedStatus(value);
+          setPage(1);
+        }}
+        searchValue={searchTerm}
+        onSearchChange={(value) => {
+          setSearchTerm(value);
+          setPage(1);
+        }}
+        searchPlaceholder="주문번호, 상품명 검색..."
+        searchMinWidth="min-w-[240px]"
+        showFilter
+        showSort
+        showDownload
+      />
 
       {/* 4. 데이터 테이블 영역 */}
       <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden">

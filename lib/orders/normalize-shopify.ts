@@ -49,6 +49,8 @@ export function normalizeShopifyOrder(o: ShopifyOrderListItem): Order {
     items: (o.line_items ?? []).map((item) => ({
       name: item.title,
       quantity: item.quantity,
+      product_id: item.product_id ?? null,
+      price: item.price != null ? Number(item.price) : null,
     })),
     total_price: Number(o.total_price ?? 0),
     status: normalizeShopifyStatus(o),

@@ -9,14 +9,13 @@ import {
 } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Save } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import {
   foodProductCreateSchema,
   type FoodProductCreateValues,
   type FoodProductCreateInput,
 } from "./food-product.schema";
 import { useProductImageUpload } from "./hooks/use-product-image-upload";
-import { buildFullDescription } from "./hooks/use-legal-info-description";
+import { createProduct } from "@/lib/products/create-product";
 import { ProductBasicInfoSection } from "./shared/product-basic-info-section";
 import { ProductImageSection } from "./shared/product-image-section";
 import { ProductOptionsSection } from "./shared/product-options-section";
@@ -73,7 +72,6 @@ export default function FoodProductCreateForm() {
   });
 
   const router = useRouter();
-  const supabase = createClient();
   const [isSaving, setIsSaving] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
   const [isOptionsOpen, setIsOptionsOpen] = React.useState(false);
@@ -141,115 +139,7 @@ export default function FoodProductCreateForm() {
 
     try {
       const { finalImages } = await resolveFinalImages();
-      const fullDescription = buildFullDescription(
-        data.description,
-        data.legalInfo,
-      );
-
-      const payload = {
-        name: data.name,
-        category_nos: data.categoryNos,
-        price: data.price,
-        cost: data.cost,
-        stock: data.stock,
-        description: fullDescription,
-        images: finalImages,
-        options: data.options,
-        legal_info: data.legalInfo,
-        channels: data.channels,
-        channel_data: data.channelData,
-        status: submitStatus,
-      };
-
-      const { data: inserted, error } = await supabase
-        .from("products")
-        .insert(payload)
-        .select()
-        .single();
-
-      if (error) throw error;
-      const insertedRowId = inserted.id;
-
-      if (data.channels.cafe24) {
-        const res = await fetch("/api/products", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            product_name: data.name,
-            price: data.price,
-            supply_price: data.cost,
-            description: fullDescription,
-            category_nos: data.categoryNos,
-            display:
-              data.channelData.cafe24?.displayStatus === "진열함" ? "T" : "F",
-            selling:
-              data.channelData.cafe24?.sellingStatus === "판매함" ? "T" : "F",
-            detail_image: finalImages[0] || "",
-            stock_quantity: data.stock,
-          }),
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "카페24 등록 실패");
-        }
-
-        const cafe24Result = await res.json();
-        const newProductNo = cafe24Result?.product?.product_no;
-
-        if (newProductNo && insertedRowId) {
-          // stock 라우트가 cafe24_product_no를 조회하므로 먼저 저장
-          await supabase
-            .from("products")
-            .update({
-              cafe24_product_no: newProductNo,
-              cafe24_synced_at: new Date().toISOString(),
-            })
-            .eq("id", insertedRowId);
-
-          // 이 시점엔 shopify_inventory_item_id가 없어 Shopify updateStock은 호출되지 않음
-          await fetch(`/api/products/${insertedRowId}/stock`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ stock: data.stock }),
-          });
-        }
-      }
-
-      if (data.channels.shopify) {
-        const shopifyRes = await fetch("/api/shopify/products", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: data.name,
-            body_html: fullDescription,
-            price: data.price,
-            sku: data.name.replace(/\s+/g, "-").toLowerCase(),
-            inventory_quantity: data.stock,
-            images: finalImages,
-          }),
-        });
-
-        if (!shopifyRes.ok) {
-          const err = await shopifyRes.json();
-          throw new Error(err.error || "Shopify 등록 실패");
-        }
-
-        const shopifyResult = await shopifyRes.json();
-
-        if (shopifyResult.shopify_product_id && insertedRowId) {
-          await supabase
-            .from("products")
-            .update({
-              shopify_product_id: shopifyResult.shopify_product_id,
-              shopify_inventory_item_id:
-                shopifyResult.shopify_inventory_item_id,
-              shopify_synced_at: new Date().toISOString(),
-            })
-            .eq("id", insertedRowId);
-        }
-      }
-
+      await createProduct(data, finalImages, submitStatus);
       setIsSaving(false);
       router.push("/products");
     } catch (error) {

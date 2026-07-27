@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
-  console.log("🔥 쇼피파이 API 라우트 진입 성공!");
   const url = req.url;
   const [cafe24Res, shopifyRes] = await Promise.allSettled([
     fetch(url.replace("/api/orders", "/api/orders/cafe24")).then((r) =>

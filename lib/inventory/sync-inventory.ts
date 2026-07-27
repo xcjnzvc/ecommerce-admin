@@ -28,8 +28,6 @@ export async function syncInventory(): Promise<{
   shopifySyncedCount: number;
   errorCount: number;
 }> {
-  console.log("syncInventory 실행");
-  console.log("########## 내가 수정한 코드 실행 ##########");
   const now = new Date().toISOString();
   let errorCount = 0;
   const supabase = getServiceClient();
@@ -40,7 +38,6 @@ export async function syncInventory(): Promise<{
     .select("cafe24_product_no");
 
   if (dbError || !dbProducts) {
-    console.error("Supabase 상품 목록 조회 실패:", dbError);
     return { syncedProductCount: 0, shopifySyncedCount: 0, errorCount: 1 };
   }
 
@@ -65,8 +62,7 @@ export async function syncInventory(): Promise<{
         await logSyncError({ productNo, errorMessage: "상품 재고 조회 실패" });
         return null;
       }
-      console.log(product.product_no);
-      console.log(product.quantity);
+
       return product;
     },
   );
@@ -74,8 +70,6 @@ export async function syncInventory(): Promise<{
   const validProducts = productResults.filter(
     (p): p is NonNullable<typeof p> => p !== null,
   );
-
-  console.log("validProducts 개수:", validProducts.length);
 
   // ── 4단계: Supabase 업데이트 + Shopify 재고 동기화 ──
   let shopifySyncedCount = 0;

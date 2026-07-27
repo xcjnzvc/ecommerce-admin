@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Search,
   Package,
   CheckCircle2,
   XCircle,
@@ -16,9 +15,18 @@ import {
 import Pagination, { paginateItems } from "@/app/components/Pagination";
 import SummaryCards from "@/app/components/SummaryCards";
 import ChannelBadges from "@/app/components/ChannelBadges";
+import ListFilterBar from "@/app/components/ListFilterBar";
 
 const PAGE_SIZE = 10;
 const LOG_PAGE_SIZE = 10;
+
+const INVENTORY_STATUS_TABS = [
+  { label: "전체", value: "전체" },
+  { label: "정상", value: "정상" },
+  { label: "부족", value: "부족" },
+  { label: "품절", value: "품절" },
+  { label: "동기화오류", value: "동기화오류" },
+] as const;
 
 interface InventoryItem {
   id: string;
@@ -285,50 +293,24 @@ export default function InventoryManagement() {
         }}
       />
 
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-transparent">
-          <div className="inline-flex items-center p-1 bg-[#eceff1]/50 border border-gray-200/40 rounded-xl w-fit flex-wrap">
-            {["전체", "정상", "부족", "품절", "동기화오류"].map((status) => {
-              const isActive = selectedStatus === status;
-              return (
-                <button
-                  key={status}
-                  onClick={() => {
-                    setSelectedStatus(status);
-                    setPage(1);
-                  }}
-                  className={`px-4 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
-                    isActive
-                      ? "bg-[#143617] text-white shadow-sm"
-                      : "text-[#5e6e82] hover:text-[#143617] bg-transparent"
-                  }`}
-                >
-                  {status}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 bg-transparent">
-            <div className="relative min-w-[240px] flex-1 md:flex-initial">
-              <Search
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-                size={14}
-              />
-              <input
-                type="text"
-                placeholder="상품명 검색..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full pl-9 pr-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#143617] focus:border-[#143617] transition-all"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      <ListFilterBar
+        statusTabs={[...INVENTORY_STATUS_TABS]}
+        selectedStatus={selectedStatus}
+        onStatusChange={(value) => {
+          setSelectedStatus(value);
+          setPage(1);
+        }}
+        searchValue={searchTerm}
+        onSearchChange={(value) => {
+          setSearchTerm(value);
+          setPage(1);
+        }}
+        searchPlaceholder="상품명 검색..."
+        searchMinWidth="min-w-[240px]"
+        showFilter
+        showSort
+        showDownload
+      />
 
       <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden mb-10">
         {isLoading ? (

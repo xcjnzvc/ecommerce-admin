@@ -1,5 +1,4 @@
 import axios, { AxiosError } from "axios";
-import fs from "fs";
 import { cafe24Api } from "../axios-instances";
 import { createClient } from "@supabase/supabase-js";
 
@@ -101,13 +100,8 @@ export const cafe24 = {
 
     const rawPath = res.data.images[0].path;
 
-    console.log("===== 카페24 이미지 업로드 원본 응답 =====");
-    console.log(JSON.stringify(res.data, null, 2));
-
     // 전체 URL에서 도메인을 떼고 경로(path)만 추출
     const finalPath = new URL(rawPath).pathname;
-
-    console.log("변환된 경로:", finalPath);
 
     return finalPath;
   },
@@ -204,9 +198,6 @@ export const cafe24 = {
   },
 
   updateProductImages: async (productNo: number, images: ProductImageInput) => {
-    console.log("detail_image 시작", images.detail_image?.substring(0, 50));
-    console.log("detail_image 길이", images.detail_image?.length);
-
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -419,49 +410,6 @@ export const cafe24 = {
 
     const url = `https://${data.mall_id}.cafe24api.com/api/v2/admin/orders`;
 
-    // #region agent log
-    let cachedScopes: string[] | null = null;
-    try {
-      const scopesRaw = fs.readFileSync("/tmp/cafe24-scopes.json", "utf8");
-      cachedScopes = JSON.parse(scopesRaw) as string[];
-    } catch {
-      cachedScopes = null;
-    }
-    const beforeLog = {
-      sessionId: "f92f57",
-      runId: "post-fix",
-      hypothesisId: "A",
-      location: "lib/api/cafe24.ts:getOrders:before",
-      message: "카페24 getOrders 호출 직전",
-      data: {
-        hasMallId: Boolean(data.mall_id),
-        dateType: params.dateType,
-        embed: params.embed ?? null,
-        startDate: params.startDate,
-        endDate: params.endDate,
-        cachedScopes,
-        hasReadOrderScope: cachedScopes?.includes("mall.read_order") ?? false,
-      },
-      timestamp: Date.now(),
-    };
-    try {
-      fs.appendFileSync(
-        "/Users/kangsujeong/Desktop/ecommerce-admin/.cursor/debug-f92f57.log",
-        `${JSON.stringify(beforeLog)}\n`,
-      );
-    } catch {
-      /* ignore */
-    }
-    fetch("http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "f92f57",
-      },
-      body: JSON.stringify(beforeLog),
-    }).catch(() => {});
-    // #endregion
-
     try {
       const res = await cafe24Api.get(url, {
         params: {
@@ -472,67 +420,9 @@ export const cafe24 = {
           limit: 500,
         },
       });
-      // #region agent log
-      const successLog = {
-        sessionId: "f92f57",
-        runId: "post-fix",
-        hypothesisId: "A",
-        location: "lib/api/cafe24.ts:getOrders:success",
-        message: "카페24 getOrders 성공",
-        data: {
-          orderCount: (res.data.orders ?? []).length,
-          hasReadOrderScope: cachedScopes?.includes("mall.read_order") ?? false,
-        },
-        timestamp: Date.now(),
-      };
-      try {
-        fs.appendFileSync(
-          "/Users/kangsujeong/Desktop/ecommerce-admin/.cursor/debug-f92f57.log",
-          `${JSON.stringify(successLog)}\n`,
-        );
-      } catch {
-        /* ignore */
-      }
-      // #endregion
       return res.data.orders ?? [];
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        // #region agent log
-        const failLog = {
-          sessionId: "f92f57",
-          runId: "post-fix",
-          hypothesisId: "A",
-          location: "lib/api/cafe24.ts:getOrders:catch",
-          message: "카페24 getOrders axios 실패",
-          data: {
-            status: err.response?.status ?? null,
-            cafe24Error: err.response?.data ?? null,
-            dateType: params.dateType,
-            hasReadOrderScope:
-              cachedScopes?.includes("mall.read_order") ?? false,
-          },
-          timestamp: Date.now(),
-        };
-        try {
-          fs.appendFileSync(
-            "/Users/kangsujeong/Desktop/ecommerce-admin/.cursor/debug-f92f57.log",
-            `${JSON.stringify(failLog)}\n`,
-          );
-        } catch {
-          /* ignore */
-        }
-        fetch(
-          "http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Debug-Session-Id": "f92f57",
-            },
-            body: JSON.stringify(failLog),
-          },
-        ).catch(() => {});
-        // #endregion
         console.error(
           `[${params.dateType}] 카페24 주문 조회 실패:`,
           err.response?.status,
@@ -584,24 +474,16 @@ export const cafe24 = {
     const url = `https://${data.mall_id}.cafe24api.com/api/v2/admin/products/${productNo}/variants`;
     const res = await cafe24Api.get(url);
 
-    console.log(JSON.stringify(res.data, null, 2));
-
     const variantCode = res.data.variants?.[0]?.variant_code;
 
     if (variantCode) {
       const inventoryRes = await cafe24Api.get(
         `https://${data.mall_id}.cafe24api.com/api/v2/admin/products/${productNo}/variants/${variantCode}/inventories`,
       );
-
-      console.log("====== inventories 응답 ======");
-      console.log(JSON.stringify(inventoryRes.data, null, 2));
     }
 
     try {
       const res = await cafe24Api.get(url);
-
-      console.log("====== 상품 상세 응답 ======");
-      console.log(JSON.stringify(res.data, null, 2));
 
       const variant = res.data.variants?.[0];
 

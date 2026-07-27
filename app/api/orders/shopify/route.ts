@@ -17,7 +17,6 @@ export async function GET(req: NextRequest) {
       createdAtMax: `${endDate}T23:59:59Z`,
     });
 
-    console.log("쇼피파이에서 가져온 날것(raw) 데이터:", raw);
     return NextResponse.json({ orders: raw.map(normalizeShopifyOrder) });
   } catch (err) {
     console.error("Shopify 주문 목록 조회 실패:", err);

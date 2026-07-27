@@ -22,6 +22,8 @@ export function normalizeCafe24Order(o: Cafe24OrderListItem): Order {
     items: (o.items ?? []).map((item) => ({
       name: item.product_name,
       quantity: item.quantity,
+      product_id: item.product_no,
+      price: null,
     })),
     total_price: Number(o.payment_amount ?? 0),
     status: mapOrderStatus(o.order_status),

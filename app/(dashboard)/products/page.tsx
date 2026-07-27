@@ -2,19 +2,16 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  Search,
   Plus,
-  Download,
   Package,
   CheckCircle2,
   FileEdit,
-  Filter,
-  ArrowUpDown,
   MoreHorizontal,
   Copy,
   Trash2,
   X,
   AlertCircle,
+  Upload,
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -22,8 +19,16 @@ import { useRouter } from "next/navigation";
 import Pagination, { paginateItems } from "@/app/components/Pagination";
 import SummaryCards from "@/app/components/SummaryCards";
 import ChannelBadges from "@/app/components/ChannelBadges";
+import ListFilterBar from "@/app/components/ListFilterBar";
+import BulkUploadModal from "./_components/BulkUploadModal";
 
 const PAGE_SIZE = 10;
+
+const PRODUCT_STATUS_TABS = [
+  { label: "전체", value: "전체" },
+  { label: "판매중", value: "판매중" },
+  { label: "임시저장", value: "임시저장" },
+] as const;
 
 interface Product {
   id: string;
@@ -63,6 +68,7 @@ export default function ProductList() {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -78,7 +84,38 @@ export default function ProductList() {
 
         if (error) throw error;
         setProducts(data ?? []);
+        // #region agent log
+        fetch(
+          "http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Debug-Session-Id": "69fb1b",
+            },
+            body: JSON.stringify({
+              sessionId: "69fb1b",
+              location: "products/page.tsx:loadData",
+              message: "products loaded for list",
+              data: {
+                count: (data ?? []).length,
+                sample: (data ?? [])
+                  .slice(0, 3)
+                  .map((p) => ({
+                    id: p.id,
+                    name: p.name,
+                    images: p.images,
+                    firstImage: p.images?.[0] ?? null,
+                  })),
+              },
+              timestamp: Date.now(),
+              hypothesisId: "D-E",
+            }),
+          },
+        ).catch(() => {});
+        // #endregion
       } catch (error) {
+        console.error("상품 목록을 불러오는 중 오류가 발생했습니다.", error);
         setLoadError("상품 목록을 불러오는 중 오류가 발생했습니다.");
       } finally {
         setIsLoading(false);
@@ -147,7 +184,10 @@ export default function ProductList() {
     return matchesStatus && matchesSearch;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredProducts.length / PAGE_SIZE),
+  );
   const currentPage = Math.min(page, totalPages);
   const pagedProducts = paginateItems(filteredProducts, currentPage, PAGE_SIZE);
 
@@ -166,6 +206,23 @@ export default function ProductList() {
       );
     } else {
       setSelectedProductIds([...selectedProductIds, productId]);
+    }
+  };
+
+  const reloadProducts = async () => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("products")
+        .select(
+          "id, name, price, stock, status, created_at, images, cafe24_product_no, shopify_product_id",
+        )
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setProducts(data ?? []);
+    } catch {
+      setToastMessage("상품 목록을 다시 불러오지 못했습니다.");
     }
   };
 
@@ -222,8 +279,12 @@ export default function ProductList() {
           </p>
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto">
-          <button className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-[#e2e2e2] rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm w-full md:w-auto">
-            <Download size={16} className="text-gray-500" /> 템플릿 다운로드
+          <button
+            type="button"
+            onClick={() => setIsBulkUploadOpen(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-[#e2e2e2] rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm w-full md:w-auto"
+          >
+            <Upload size={16} className="text-gray-500" /> 엑셀 파일 올리기
           </button>
 
           <Link href="/products/new" className="w-full md:w-auto">
@@ -248,66 +309,23 @@ export default function ProductList() {
         }}
       />
 
-      {/* 3. 통합 검색 및 필터 컨트롤러 */}
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-transparent">
-          <div className="inline-flex items-center p-1 bg-[#eceff1]/50 border border-gray-200/40 rounded-xl w-fit self-start">
-            {["전체", "판매중", "임시저장"].map((status) => {
-              const isActive = selectedStatus === status;
-              return (
-                <button
-                  key={status}
-                  onClick={() => {
-                    setSelectedStatus(status);
-                    setPage(1);
-                  }}
-                  className={`px-5 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${
-                    isActive
-                      ? "bg-[#143617] text-white shadow-sm"
-                      : "text-[#5e6e82] hover:text-[#143617] bg-transparent"
-                  }`}
-                >
-                  {status}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 bg-transparent">
-            <div className="relative min-w-[200px] flex-1 md:flex-initial">
-              <Search
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-                size={14}
-              />
-              <input
-                type="text"
-                placeholder="검색어 입력..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full pl-9 pr-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#143617] focus:border-[#143617] transition-all"
-              />
-            </div>
-
-            <button className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-semibold text-[#5e6e82] shadow-sm transition-all">
-              <Filter size={13} className="text-gray-400" />
-              필터
-            </button>
-
-            <button className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-semibold text-[#5e6e82] shadow-sm transition-all">
-              <ArrowUpDown size={13} className="text-gray-400" />
-              정렬
-            </button>
-
-            <button className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-semibold text-[#5e6e82] shadow-sm transition-all">
-              <Download size={13} className="text-gray-400" />
-              다운로드
-            </button>
-          </div>
-        </div>
-      </div>
+      <ListFilterBar
+        statusTabs={[...PRODUCT_STATUS_TABS]}
+        selectedStatus={selectedStatus}
+        onStatusChange={(value) => {
+          setSelectedStatus(value);
+          setPage(1);
+        }}
+        searchValue={searchTerm}
+        onSearchChange={(value) => {
+          setSearchTerm(value);
+          setPage(1);
+        }}
+        searchPlaceholder="검색어 입력..."
+        showFilter
+        showSort
+        showDownload
+      />
 
       {/* 4. 데이터 테이블 영역 */}
       <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden">
@@ -486,22 +504,23 @@ export default function ProductList() {
                           </button>
 
                           {activeDropdownId === product.id && (
-                            <div className="absolute left-0 mt-1.5 w-24 bg-white border border-gray-200 rounded-xl shadow-xl py-1 z-20 animate-in fade-in duration-100">
+                            <div className="absolute right-0 mt-1.5 w-24 bg-white border border-gray-200 rounded-xl shadow-xl py-1 z-20 animate-in fade-in duration-100">
                               <button
                                 onClick={() => {
                                   setActiveDropdownId(null);
                                   router.push(`/products/${product.id}/edit`);
                                 }}
-                                className="w-full text-left px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-[#143617] transition-all"
+                                className="w-full text-center px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-[#143617] transition-all"
                               >
                                 수정
                               </button>
+                              <div className="mx-2 border-t border-gray-100" />
                               <button
                                 onClick={() => {
                                   setActiveDropdownId(null);
                                   handleSingleDelete(product);
                                 }}
-                                className="w-full text-left px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition-all"
+                                className="w-full text-center px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition-all"
                               >
                                 삭제
                               </button>
@@ -573,6 +592,16 @@ export default function ProductList() {
           <span className="text-xs font-bold">{toastMessage}</span>
         </div>
       )}
+
+      {/* 엑셀 일괄 등록 모달 */}
+      <BulkUploadModal
+        open={isBulkUploadOpen}
+        onClose={() => setIsBulkUploadOpen(false)}
+        onComplete={async (successCount) => {
+          setToastMessage(`${successCount}개 상품이 등록되었습니다.`);
+          await reloadProducts();
+        }}
+      />
 
       {/* 삭제 확인 모달 */}
       {isDeleteModalOpen && (

@@ -70,8 +70,6 @@ export async function PUT(
 
       // [핵심] 프론트에서 넘어온 새 이미지 주소로 카페24 이미지 강제 갱신
       if (detail_image) {
-        console.log("🔥 카페24에 새로 업로드할 이미지 URL:", detail_image);
-
         // Supabase 이미지를 Base64로 변환
         const base64 = await imageUrlToBase64(detail_image);
 

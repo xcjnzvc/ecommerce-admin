@@ -15,6 +15,8 @@ export interface ShopifyOrderAddress {
 export interface ShopifyOrderLineItem {
   title: string;
   quantity: number;
+  product_id?: number | null;
+  price?: string | null;
 }
 
 export interface ShopifyOrderFulfillment {

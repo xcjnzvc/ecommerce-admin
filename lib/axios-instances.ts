@@ -28,23 +28,13 @@ async function getValidAccessToken(): Promise<string> {
 
   if (error || !data) throw new Error("저장된 카페24 토큰이 없습니다.");
 
-  // ── 디버깅 로그 ──
-  console.log("=== 토큰 조회 결과 ===");
-  console.log("mall_id:", data.mall_id);
-  console.log("access_token (앞 10자):", data.access_token?.slice(0, 10));
-  console.log("refresh_token (앞 10자):", data.refresh_token?.slice(0, 10));
-  console.log("expires_at:", data.expires_at);
-  console.log("현재 시각:", new Date().toISOString());
-
   const isExpired = new Date(data.expires_at).getTime() < Date.now() + 60_000;
-  console.log("만료 여부:", isExpired);
 
   if (!isExpired) {
     return data.access_token;
   }
 
   if (refreshPromise) {
-    console.log("이미 갱신 진행 중 → 기존 요청 결과 대기");
     return refreshPromise;
   }
 
@@ -53,12 +43,6 @@ async function getValidAccessToken(): Promise<string> {
       const params = new URLSearchParams();
       params.append("grant_type", "refresh_token");
       params.append("refresh_token", data.refresh_token);
-
-      console.log("=== 리프레시 토큰 요청 시작 ===");
-      console.log(
-        "사용할 refresh_token (앞 10자):",
-        data.refresh_token?.slice(0, 10),
-      );
 
       let response;
       try {
@@ -87,9 +71,6 @@ async function getValidAccessToken(): Promise<string> {
         throw e;
       }
 
-      console.log("=== 리프레시 성공 응답 ===");
-      console.log(JSON.stringify(response.data));
-      console.log("=== 부여된 스코프 ===", response.data.scopes);
       fs.writeFileSync(
         "/tmp/cafe24-scopes.json",
         JSON.stringify(response.data.scopes, null, 2),
@@ -116,11 +97,6 @@ async function getValidAccessToken(): Promise<string> {
         console.error("=== DB 업데이트 실패 ===", updateError.message);
         throw new Error("토큰 DB 업데이트 실패: " + updateError.message);
       }
-
-      console.log(
-        "=== DB 업데이트 성공, 새 expires_at:",
-        newExpiresAt.toISOString(),
-      );
 
       return access_token;
     } finally {

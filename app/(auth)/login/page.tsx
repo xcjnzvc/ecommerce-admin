@@ -54,7 +54,6 @@ export default function LoginPage() {
   }, []);
 
   const onSubmit = async (data: LoginForm) => {
-    console.log("전달된 데이터:", data);
     try {
       setIsNavigating(true);
       const supabase = createClient();

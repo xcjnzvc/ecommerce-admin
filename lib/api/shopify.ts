@@ -18,15 +18,11 @@ export const shopify = {
   getProducts: async () => {
     const res = await shopifyApi.get(`${BASE}/products.json`);
 
-    console.log("====== Shopify Products ======");
-    console.log(JSON.stringify(res.data, null, 2));
-
     return res.data;
   },
 
   // 2. 새 상품 등록
   createProduct: async (product: ShopifyProductInput) => {
-    console.log("🔍 Shopify로 보내는 가격:", product.price);
     const res = await shopifyApi.post(`${BASE}/products.json`, {
       product: {
         title: product.title,
@@ -67,7 +63,7 @@ export const shopify = {
   deleteProduct: async (productId: number) => {
     try {
       const res = await shopifyApi.delete(`${BASE}/products/${productId}.json`);
-      console.log("🔍 Shopify 상품 삭제 응답:", res.data);
+
       return res.data;
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -87,20 +83,11 @@ export const shopify = {
     locationId: number,
     quantity: number,
   ) => {
-    console.log("Shopify 요청", {
-      inventoryItemId,
-      locationId,
-      quantity,
-    });
-
     const res = await shopifyApi.post(`${BASE}/inventory_levels/set.json`, {
       location_id: locationId,
       inventory_item_id: inventoryItemId,
       available: quantity,
     });
-
-    console.log("Shopify 응답");
-    console.log(JSON.stringify(res.data, null, 2));
 
     return res.data;
   },

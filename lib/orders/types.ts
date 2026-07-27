@@ -13,6 +13,10 @@ export type InternalOrderStatus = (typeof INTERNAL_ORDER_STATUSES)[number];
 export interface OrderItem {
   name: string;
   quantity: number;
+  /** 카페24: product_no, 쇼피파이: product_id */
+  product_id: string | number | null;
+  /** 단가. 카페24는 미지원(null), 쇼피파이는 line_item.price */
+  price: number | null;
 }
 
 export interface Order {

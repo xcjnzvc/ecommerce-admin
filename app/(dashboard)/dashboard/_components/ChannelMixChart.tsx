@@ -2,15 +2,39 @@
 
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
-const data = [
-  { name: "자사몰", value: 14372, color: "#143617" },
-  { name: "네이버 스마트스토어", value: 8894, color: "#2d6a4f" },
-  { name: "쿠팡", value: 4789, color: "#52b788" },
-  //   { name: "카카오톡스토어", value: 3418, color: "#d99645" },
-  //   { name: "무신사", value: 2745, color: "#fca311" },
+interface ChannelMixChartProps {
+  channelMix?: { cafe24: number; shopify: number };
+  cafe24Available?: boolean;
+  isLoading?: boolean;
+}
+
+const CHANNEL_META = [
+  { key: "cafe24" as const, name: "카페24", color: "#143617" },
+  { key: "shopify" as const, name: "Shopify", color: "#2d6a4f" },
 ];
 
-export default function ChannelMixChart() {
+function formatSales(value: number): string {
+  if (value >= 100_000_000) {
+    return `${(value / 100_000_000).toFixed(2)}억`;
+  }
+  if (value >= 10_000) {
+    return `${Math.round(value / 10_000)}만`;
+  }
+  return value.toLocaleString();
+}
+
+export default function ChannelMixChart({
+  channelMix = { cafe24: 0, shopify: 0 },
+  cafe24Available = true,
+  isLoading = false,
+}: ChannelMixChartProps) {
+  const data = CHANNEL_META.map((meta) => ({
+    ...meta,
+    value: channelMix[meta.key] ?? 0,
+  }));
+
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+
   return (
     <div className="bg-white p-6 rounded-[20px] border w-full">
       <div className="flex justify-between items-center mb-6">
@@ -24,41 +48,66 @@ export default function ChannelMixChart() {
       </div>
 
       <div className="h-[200px] relative">
-        <ResponsiveContainer>
-          <PieChart>
-            <Pie
-              data={data}
-              innerRadius={60}
-              outerRadius={80}
-              paddingAngle={5}
-              dataKey="value"
-            >
-              {data.map((entry, index) => (
-                <Cell key={index} fill={entry.color} />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <p className="text-[10px] text-gray-400">TOTAL</p>
-          <p className="text-xl font-bold">3.42억</p>
-        </div>
+        {isLoading ? (
+          <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+            채널 매출을 불러오는 중...
+          </div>
+        ) : total === 0 ? (
+          <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+            표시할 채널 매출이 없습니다.
+          </div>
+        ) : (
+          <>
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie
+                  data={data}
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={index} fill={entry.color} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <p className="text-[10px] text-gray-400">TOTAL</p>
+              <p className="text-xl font-bold">{formatSales(total)}</p>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="mt-4 space-y-3">
-        {data.map((item, i) => (
-          <div key={i} className="flex items-center text-sm">
-            <div
-              className="w-3 h-3 rounded-sm mr-3"
-              style={{ backgroundColor: item.color }}
-            />
-            <span className="flex-1 text-gray-600">{item.name}</span>
-            <span className="text-gray-400 text-xs w-10">
-              {Math.round((item.value / 34218) * 100)}%
-            </span>
-            <span className="font-bold w-20 text-right">{item.value}만</span>
-          </div>
-        ))}
+        {data.map((item) => {
+          const percent = total > 0 ? Math.round((item.value / total) * 100) : 0;
+          const showReviewBadge =
+            item.key === "cafe24" && !cafe24Available;
+
+          return (
+            <div key={item.key} className="flex items-center text-sm">
+              <div
+                className="w-3 h-3 rounded-sm mr-3"
+                style={{ backgroundColor: item.color }}
+              />
+              <span className="flex-1 text-gray-600 flex items-center gap-2">
+                {item.name}
+                {showReviewBadge && (
+                  <span className="text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded">
+                    심사중
+                  </span>
+                )}
+              </span>
+              <span className="text-gray-400 text-xs w-10">{percent}%</span>
+              <span className="font-bold w-20 text-right">
+                {isLoading ? "-" : formatSales(item.value)}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

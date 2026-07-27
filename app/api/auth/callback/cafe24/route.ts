@@ -52,9 +52,6 @@ export async function GET(req: NextRequest) {
     const { access_token, refresh_token, expires_in, scopes } =
       tokenResponse.data;
 
-    // --- 수정된 부분 ---
-    console.log("전체 응답 데이터:", JSON.stringify(tokenResponse.data));
-
     if (Array.isArray(scopes)) {
       try {
         const { writeFileSync } = await import("fs");
@@ -88,8 +85,6 @@ export async function GET(req: NextRequest) {
     });
 
     if (dbError) throw new Error("DB 저장 실패: " + dbError.message);
-
-    console.log("토큰 발급 및 DB 저장 성공!");
 
     return NextResponse.json({
       message: "인증 완료 및 토큰이 DB에 저장되었습니다.",
