@@ -1,5 +1,35 @@
+export interface Cafe24OrderBuyer {
+  name: string;
+  cellphone: string;
+  phone: string;
+  email: string;
+}
+
+export interface Cafe24OrderListItemEmbedded {
+  product_name: string;
+  quantity: number;
+  order_item_code: string;
+  product_no: number;
+}
+
 export interface Cafe24OrderListItem {
   order_id: string;
+  order_status?: string;
+  billing_name?: string;
+  payment_amount?: string;
+  order_date: string;
+  shop_no?: number;
+  currency?: string;
+  member_id?: string | null;
+  member_email?: string;
+  paid?: "T" | "F";
+  canceled?: "T" | "F";
+
+  // embed=buyer 사용 시 채워짐
+  buyer?: Cafe24OrderBuyer;
+
+  // embed=items 사용 시 채워짐
+  items?: Cafe24OrderListItemEmbedded[];
 }
 
 export interface Cafe24OrderItem {

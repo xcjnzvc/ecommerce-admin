@@ -6,12 +6,9 @@ import {
   Download,
   Package,
   CheckCircle2,
-  FileEdit,
   Filter,
   ArrowUpDown,
   MoreHorizontal,
-  Copy,
-  Trash2,
   X,
   AlertCircle,
   Truck,
@@ -22,35 +19,20 @@ import {
 import SummaryCards from "@/app/components/SummaryCards";
 import ChannelBadges from "@/app/components/ChannelBadges";
 import Pagination, { paginateItems } from "@/app/components/Pagination";
+import {
+  isInternalOrderStatus,
+  type InternalOrderStatus,
+  type Order,
+} from "@/lib/orders/types";
 
 const PAGE_SIZE = 6;
 
-type InternalOrderStatus =
-  | "결제완료"
-  | "배송준비중"
-  | "배송중"
-  | "배송완료"
-  | "취소"
-  | "반품"
-  | "교환";
-
-interface OrderItem {
-  name: string;
-  quantity: number;
-}
-
-interface Order {
-  id: string;
-  channel: "cafe24" | "shopify";
-  channel_order_id: string;
-  buyer_name: string;
-  buyer_phone: string;
-  items: OrderItem[];
-  total_price: number;
-  status: InternalOrderStatus;
-  tracking_number: string | null;
-  courier_company: string | null;
-  created_at: string;
+function normalizeOrder(raw: Order): Order {
+  return {
+    ...raw,
+    status: isInternalOrderStatus(raw.status) ? raw.status : "결제완료",
+    items: raw.items ?? [],
+  };
 }
 
 const getOrderStatusStyle = (status: InternalOrderStatus) => {
@@ -86,6 +68,7 @@ export default function OrderList() {
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [actionModalType, setActionModalType] = useState<
     "status" | "tracking" | null
@@ -95,108 +78,51 @@ export default function OrderList() {
   const [bulkTrackingNumber, setBulkTrackingNumber] = useState("");
   const [bulkCourier, setBulkCourier] = useState("CJ대한통운");
 
+  const fetchOrders = async () => {
+    const res = await fetch("/api/orders");
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error("주문 목록 조회 실패", res.status, body);
+      throw new Error(`주문 목록 조회 실패 (${res.status})`);
+    }
+    const data = (await res.json()) as { orders?: Order[] };
+    setOrders((data.orders ?? []).map(normalizeOrder));
+  };
+
   useEffect(() => {
-    const loadData = async () => {
+    let cancelled = false;
+
+    (async () => {
       setIsLoading(true);
       try {
-        const mockOrders: Order[] = [
-          {
-            id: "ord-2026-001",
-            channel: "cafe24",
-            channel_order_id: "20260325-0001928",
-            buyer_name: "김민준",
-            buyer_phone: "010-1234-5678",
-            items: [
-              { name: "프리미엄 코튼 오버사이즈 셔츠 (베이지)", quantity: 1 },
-              { name: "슬림핏 슬랙스", quantity: 1 },
-            ],
-            total_price: 84000,
-            status: "결제완료",
-            tracking_number: null,
-            courier_company: null,
-            created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-          },
-          {
-            id: "ord-2026-002",
-            channel: "shopify",
-            channel_order_id: "SH-US-99281",
-            buyer_name: "Sarah Jenkins",
-            buyer_phone: "010-9876-5432",
-            items: [{ name: "Eco Friendly Ceramic Tumbler", quantity: 2 }],
-            total_price: 45000,
-            status: "배송준비중",
-            tracking_number: null,
-            courier_company: null,
-            created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-          },
-          {
-            id: "ord-2026-003",
-            channel: "cafe24",
-            channel_order_id: "20260325-0001842",
-            buyer_name: "이지은",
-            buyer_phone: "010-5555-4444",
-            items: [{ name: "시그니처 린넨 원피스", quantity: 1 }],
-            total_price: 112000,
-            status: "배송중",
-            tracking_number: "68291029384",
-            courier_company: "우체국택배",
-            created_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-          },
-          {
-            id: "ord-2026-004",
-            channel: "shopify",
-            channel_order_id: "SH-US-99275",
-            buyer_name: "Alex Morgan",
-            buyer_phone: "010-3333-2222",
-            items: [{ name: "Minimalist Desk Mat (Large)", quantity: 1 }],
-            total_price: 32000,
-            status: "취소",
-            tracking_number: null,
-            courier_company: null,
-            created_at: new Date(
-              Date.now() - 1000 * 60 * 60 * 12,
-            ).toISOString(),
-          },
-          {
-            id: "ord-2026-005",
-            channel: "cafe24",
-            channel_order_id: "20260324-0009182",
-            buyer_name: "박도현",
-            buyer_phone: "010-7777-8888",
-            items: [{ name: "블루투스 기계식 키보드", quantity: 1 }],
-            total_price: 159000,
-            status: "배송완료",
-            tracking_number: "1283948576",
-            courier_company: "CJ대한통운",
-            created_at: new Date(
-              Date.now() - 1000 * 60 * 60 * 36,
-            ).toISOString(),
-          },
-          {
-            id: "ord-2026-006",
-            channel: "cafe24",
-            channel_order_id: "20260324-0008291",
-            buyer_name: "한소희",
-            buyer_phone: "010-2468-1357",
-            items: [{ name: "데일리 스니커즈 (White)", quantity: 1 }],
-            total_price: 79000,
-            status: "반품",
-            tracking_number: "9982736451",
-            courier_company: "로젠택배",
-            created_at: new Date(
-              Date.now() - 1000 * 60 * 60 * 48,
-            ).toISOString(),
-          },
-        ];
-        setOrders(mockOrders);
+        await fetchOrders();
       } catch (error) {
         console.error(error);
+        if (!cancelled) {
+          setToastMessage("주문 데이터를 불러오지 못했습니다.");
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    loadData();
   }, []);
+
+  const handleSyncOrders = async () => {
+    setIsSyncing(true);
+    try {
+      await fetchOrders();
+      setToastMessage("채널 주문을 동기화했습니다.");
+    } catch (error) {
+      console.error(error);
+      setToastMessage("주문 동기화에 실패했습니다.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   useEffect(() => {
     const handleOutsideClick = () => {
@@ -221,9 +147,6 @@ export default function OrderList() {
   const csCount = orders.filter((o) =>
     ["취소", "반품", "교환"].includes(o.status),
   ).length;
-
-  const cafe24Count = orders.filter((o) => o.channel === "cafe24").length;
-  const shopifyCount = orders.filter((o) => o.channel === "shopify").length;
 
   const summary = [
     {
@@ -277,9 +200,8 @@ export default function OrderList() {
     }
 
     const matchesSearch =
-      order.buyer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.channel_order_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.buyer_phone.includes(searchTerm) ||
+      order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.items.some((item) =>
         item.name.toLowerCase().includes(searchTerm.toLowerCase()),
       );
@@ -370,12 +292,15 @@ export default function OrderList() {
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto">
           <button
-            onClick={() =>
-              setToastMessage("주문 데이터 연동 요청이 전송되었습니다.")
-            }
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-[#e2e2e2] rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm w-full md:w-auto"
+            onClick={handleSyncOrders}
+            disabled={isSyncing || isLoading}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-[#e2e2e2] rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm w-full md:w-auto disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <RefreshCw size={15} className="text-gray-500" /> 채널 주문 동기화
+            <RefreshCw
+              size={15}
+              className={`text-gray-500 ${isSyncing ? "animate-spin" : ""}`}
+            />{" "}
+            {isSyncing ? "동기화 중..." : "채널 주문 동기화"}
           </button>
 
           <button
@@ -443,7 +368,7 @@ export default function OrderList() {
               />
               <input
                 type="text"
-                placeholder="주문자명, 연락처, 주문번호, 상품명 검색..."
+                placeholder="주문번호, 상품명 검색..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -452,12 +377,10 @@ export default function OrderList() {
                 className="w-full pl-9 pr-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#143617] focus:border-[#143617] transition-all"
               />
             </div>
-
             <button className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-semibold text-[#5e6e82] shadow-sm transition-all">
               <Filter size={13} className="text-gray-400" />
               필터
             </button>
-
             <button className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-semibold text-[#5e6e82] shadow-sm transition-all">
               <ArrowUpDown size={13} className="text-gray-400" />
               정렬
@@ -505,9 +428,6 @@ export default function OrderList() {
                   </th>
                   <th className="px-6 py-5.5 font-bold text-[#5e6e82] text-left">
                     채널
-                  </th>
-                  <th className="px-6 py-5.5 font-bold text-[#5e6e82] text-left">
-                    주문자
                   </th>
                   <th className="px-6 py-5.5 font-bold text-[#5e6e82] text-left">
                     상품정보
@@ -573,18 +493,6 @@ export default function OrderList() {
                           cafe24={order.channel === "cafe24"}
                           shopify={order.channel === "shopify"}
                         />
-                      </td>
-
-                      {/* 주문자 */}
-                      <td className="px-6 py-5 text-left">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-gray-900 text-sm">
-                            {order.buyer_name}
-                          </span>
-                          <span className="text-xs font-medium text-gray-400 mt-0.5">
-                            {order.buyer_phone}
-                          </span>
-                        </div>
                       </td>
 
                       {/* 상품정보 */}

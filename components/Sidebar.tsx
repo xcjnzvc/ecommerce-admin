@@ -22,9 +22,9 @@ const menus = [
   { label: "상품관리", href: "/products", icon: Package },
   { label: "주문관리", href: "/orders", icon: ShoppingCart },
   { label: "재고관리", href: "/inventory", icon: Warehouse },
-  { label: "리뷰관리", href: "/reviews", icon: Star },
-  { label: "마케팅", href: "/marketing", icon: Megaphone },
-  { label: "설정", href: "/settings", icon: Settings },
+  // { label: "리뷰관리", href: "/reviews", icon: Star },
+  // { label: "마케팅", href: "/marketing", icon: Megaphone },
+  // { label: "설정", href: "/settings", icon: Settings },
 ];
 
 export default function Sidebar() {

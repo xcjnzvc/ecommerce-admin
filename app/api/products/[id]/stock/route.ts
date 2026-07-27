@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cafe24 } from "@/lib/api/cafe24";
 import { shopify } from "@/lib/api/shopify";
 import { createClient } from "@supabase/supabase-js";
+import { createClient as createServerSupabase } from "@/lib/supabase/server"; // 추가
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,6 +22,13 @@ export async function PUT(
       { status: 400 },
     );
   }
+
+  // 현재 로그인한 관리자 확인
+  const serverSupabase = await createServerSupabase();
+  const {
+    data: { user },
+  } = await serverSupabase.auth.getUser();
+  const modifierName = user?.email ?? "알 수 없음";
 
   const { data: row, error: rowError } = await supabase
     .from("products")
@@ -60,12 +68,13 @@ export async function PUT(
 
     if (updateError) throw updateError;
 
-    // service role이므로 RLS 우회 — 클라이언트 직접 insert는 별도 RLS 정책 필요
     const { error: logError } = await supabase.from("inventory_logs").insert({
       product_id: id,
       product_name: row.name,
       old_stock,
       new_stock: stock,
+      source: "manual",
+      modifier: modifierName,
     });
 
     if (logError) throw logError;

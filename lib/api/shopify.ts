@@ -1,4 +1,6 @@
+import axios from "axios";
 import { shopifyApi } from "../axios-instances";
+import type { ShopifyOrderListItem } from "@/types/shopify";
 
 const BASE = `https://${process.env.SHOPIFY_SHOP}/admin/api/2026-07`;
 
@@ -24,6 +26,7 @@ export const shopify = {
 
   // 2. 새 상품 등록
   createProduct: async (product: ShopifyProductInput) => {
+    console.log("🔍 Shopify로 보내는 가격:", product.price);
     const res = await shopifyApi.post(`${BASE}/products.json`, {
       product: {
         title: product.title,
@@ -62,8 +65,20 @@ export const shopify = {
 
   // 4. 상품 삭제
   deleteProduct: async (productId: number) => {
-    const res = await shopifyApi.delete(`${BASE}/products/${productId}.json`);
-    return res.data;
+    try {
+      const res = await shopifyApi.delete(`${BASE}/products/${productId}.json`);
+      console.log("🔍 Shopify 상품 삭제 응답:", res.data);
+      return res.data;
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        console.error("🔍 Shopify 삭제 실패 응답:", {
+          status: err.response?.status,
+          data: err.response?.data, // 여기에 Shopify가 보낸 실제 에러 메시지가 있음
+          headers: err.response?.headers,
+        });
+      }
+      throw err; // 상위 라우트에서 처리하도록 다시 던짐
+    }
   },
 
   // 5. 재고 수정 (inventory_item_id, location_id 필요)
@@ -87,6 +102,96 @@ export const shopify = {
     console.log("Shopify 응답");
     console.log(JSON.stringify(res.data, null, 2));
 
+    return res.data;
+  },
+
+  // 6. 주문 목록 조회
+  // fields로 고객 PII(customer, email, shipping/billing_address 등)를 제외해
+  // Protected Customer Data 미승인 앱의 403을 방지한다.
+  getOrders: async (params?: {
+    status?: string;
+    limit?: number;
+    createdAtMin?: string;
+    createdAtMax?: string;
+  }): Promise<ShopifyOrderListItem[]> => {
+    const query = new URLSearchParams({
+      status: params?.status ?? "any", // open, closed, cancelled, any
+      limit: String(params?.limit ?? 50),
+      fields: [
+        "id",
+        "name",
+        "created_at",
+        "cancelled_at",
+        "financial_status",
+        "fulfillment_status",
+        "total_price",
+        "currency",
+        "line_items",
+        "fulfillments",
+      ].join(","),
+    });
+
+    if (params?.createdAtMin) {
+      query.set("created_at_min", params.createdAtMin);
+    }
+    if (params?.createdAtMax) {
+      query.set("created_at_max", params.createdAtMax);
+    }
+
+    const res = await shopifyApi.get<{ orders: ShopifyOrderListItem[] }>(
+      `${BASE}/orders.json?${query}`,
+    );
+
+    return res.data.orders ?? [];
+  },
+
+  // 7. 주문 단건 조회
+  getOrder: async (orderId: number) => {
+    const res = await shopifyApi.get(`${BASE}/orders/${orderId}.json`);
+    return res.data;
+  },
+
+  // 8. 배송(Fulfillment) 등록 → 송장번호 입력
+  createFulfillment: async (
+    orderId: number,
+    trackingNumber: string,
+    trackingCompany: string,
+    lineItemIds?: number[],
+  ) => {
+    // fulfillment_orders 먼저 조회해서 fulfillment_order_id 확보 (2022-07+ 필수)
+    const foRes = await shopifyApi.get(
+      `${BASE}/orders/${orderId}/fulfillment_orders.json`,
+    );
+    const fulfillmentOrderId = foRes.data.fulfillment_orders[0]?.id;
+
+    const res = await shopifyApi.post(`${BASE}/fulfillments.json`, {
+      fulfillment: {
+        line_items_by_fulfillment_order: [
+          {
+            fulfillment_order_id: fulfillmentOrderId,
+            ...(lineItemIds && {
+              fulfillment_order_line_items: lineItemIds.map((id) => ({
+                id,
+              })),
+            }),
+          },
+        ],
+        tracking_info: {
+          number: trackingNumber,
+          company: trackingCompany,
+        },
+        notify_customer: true,
+      },
+    });
+
+    return res.data;
+  },
+
+  // 9. 주문 상태 변경 (취소)
+  cancelOrder: async (orderId: number, reason?: string) => {
+    const res = await shopifyApi.post(`${BASE}/orders/${orderId}/cancel.json`, {
+      reason: reason ?? "other",
+    });
     return res.data;
   },
 };

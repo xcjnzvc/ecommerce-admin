@@ -1,4 +1,5 @@
 import axios, { AxiosError } from "axios";
+import fs from "fs";
 import { cafe24Api } from "../axios-instances";
 import { createClient } from "@supabase/supabase-js";
 
@@ -148,15 +149,6 @@ export const cafe24 = {
     if (!data?.mall_id) throw new Error("mall_id를 찾을 수 없습니다.");
 
     const url = `https://${data.mall_id}.cafe24api.com/api/v2/admin/products`;
-
-    // const res = await cafe24Api.post(url, {
-    //   shop_no: 1,
-    //   request: {
-    //     product_condition: "N",
-    //     ...product,
-    //     use_inventory: "T",
-    //   },
-    // });
     const payload = {
       shop_no: 1,
       request: {
@@ -211,60 +203,7 @@ export const cafe24 = {
     return res.data;
   },
 
-  // 이미지 수정
-  // updateProductImages: async (productNo: number, images: ProductImageInput) => {
-  //   const supabase = createClient(
-  //     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  //     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  //   );
-
-  //   const { data } = await supabase
-  //     .from("cafe24_tokens")
-  //     .select("mall_id")
-  //     .single();
-
-  //   if (!data?.mall_id) throw new Error("mall_id를 찾을 수 없습니다.");
-
-  //   // 문서에 명시된 올바른 상품 이미지 등록/수정 엔드포인트 (POST)
-  //   const url = `https://${data.mall_id}.cafe24api.com/api/v2/admin/products/${productNo}/images`;
-
-  //   const formatImageRelativePath = (imgPath?: string) => {
-  //     if (!imgPath) return undefined;
-  //     if (imgPath.startsWith("http")) {
-  //       try {
-  //         const urlObj = new URL(imgPath);
-  //         return urlObj.pathname;
-  //       } catch {
-  //         return imgPath;
-  //       }
-  //     }
-  //     return imgPath.startsWith("/") ? imgPath : `/${imgPath}`;
-  //   };
-
-  //   const res = await cafe24Api.post(url, {
-  //     shop_no: 1,
-  //     request: {
-  //       image_upload_type: "A", // 대표이미지 등록(A) 또는 개별이미지 등록(B)
-  //       detail_image: formatImageRelativePath(images.detail_image),
-  //       list_image: formatImageRelativePath(images.list_image),
-  //       small_image: formatImageRelativePath(images.small_image),
-  //       tiny_image: formatImageRelativePath(images.tiny_image),
-  //     },
-  //   });
-
-  //   console.log(
-  //     "===== 상품 이미지 연결 결과 =====",
-  //     JSON.stringify(res.data, null, 2),
-  //   );
-
-  //   return res.data;
-  // },
   updateProductImages: async (productNo: number, images: ProductImageInput) => {
-    // 👇 [로그 1] 함수가 시작될 때 넘어온 이미지 데이터 확인
-    // console.log(
-    //   "1️⃣ [함수 받은 원본 이미지 데이터]:",
-    //   JSON.stringify(images, null, 2),
-    // );
     console.log("detail_image 시작", images.detail_image?.substring(0, 50));
     console.log("detail_image 길이", images.detail_image?.length);
 
@@ -310,12 +249,6 @@ export const cafe24 = {
       },
     };
 
-    // 👇 [로그 3] 카페24로 던지기 직전의 최종 페이로드 확인
-    // console.log(
-    //   "3️⃣ [카페24 이미지 전송 페이로드]:",
-    //   JSON.stringify(payload, null, 2),
-    // );
-
     console.log("payload type", payload.request.image_upload_type);
     console.log(
       "payload detail 시작",
@@ -341,11 +274,6 @@ export const cafe24 = {
       console.log("🔥 [새 이미지 강제 갱신 전송 중...]");
       const res = await cafe24Api.post(url, payloadWithCacheBuster);
 
-      console.log(
-        "4️⃣ [카페24 이미지 연결 성공 응답]:",
-        JSON.stringify(res.data, null, 2),
-      );
-
       // 👇 이 부분 추가
       const check = await cafe24Api.get(
         `https://${data.mall_id}.cafe24api.com/api/v2/admin/products/${productNo}`,
@@ -356,17 +284,11 @@ export const cafe24 = {
         },
       );
 
-      console.log(
-        "5️⃣ [수정 후 상품 조회]",
-        JSON.stringify(check.data, null, 2),
-      );
-
       return res.data;
     } catch (error: unknown) {
-      // 👇 any 대신 AxiosError 타입으로 좁혀서 안전하게 에러 데이터 추출
       const err = error as AxiosError;
       console.error(
-        "❌ [카페24 이미지 전송 에러]:",
+        "[카페24 이미지 전송 에러]:",
         err.response?.data || (err as Error).message,
       );
       throw error;
@@ -395,9 +317,6 @@ export const cafe24 = {
         return value !== "" && value !== null && value !== undefined;
       }),
     );
-
-    console.log("===== 카페24 수정 요청 =====");
-    console.log(JSON.stringify(cleanedFields, null, 2));
 
     try {
       const res = await cafe24Api.put(url, {
@@ -472,14 +391,11 @@ export const cafe24 = {
         display_soldout: "F",
       },
     };
-    console.log("재고 수정 요청:", requestBody);
 
     const res = await cafe24Api.put(
       `${base}/admin/products/${productNo}/variants/${variantCode}/inventories`,
       requestBody,
     );
-
-    console.log("재고 수정 응답:", JSON.stringify(res.data, null, 2));
 
     return res.data;
   },
@@ -489,6 +405,7 @@ export const cafe24 = {
     startDate: string;
     endDate: string;
     dateType: InventoryDateType;
+    embed?: string; // "buyer,items" 형태로 전달
   }): Promise<Cafe24OrderListItem[]> => {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -502,18 +419,120 @@ export const cafe24 = {
 
     const url = `https://${data.mall_id}.cafe24api.com/api/v2/admin/orders`;
 
+    // #region agent log
+    let cachedScopes: string[] | null = null;
+    try {
+      const scopesRaw = fs.readFileSync("/tmp/cafe24-scopes.json", "utf8");
+      cachedScopes = JSON.parse(scopesRaw) as string[];
+    } catch {
+      cachedScopes = null;
+    }
+    const beforeLog = {
+      sessionId: "f92f57",
+      runId: "post-fix",
+      hypothesisId: "A",
+      location: "lib/api/cafe24.ts:getOrders:before",
+      message: "카페24 getOrders 호출 직전",
+      data: {
+        hasMallId: Boolean(data.mall_id),
+        dateType: params.dateType,
+        embed: params.embed ?? null,
+        startDate: params.startDate,
+        endDate: params.endDate,
+        cachedScopes,
+        hasReadOrderScope: cachedScopes?.includes("mall.read_order") ?? false,
+      },
+      timestamp: Date.now(),
+    };
+    try {
+      fs.appendFileSync(
+        "/Users/kangsujeong/Desktop/ecommerce-admin/.cursor/debug-f92f57.log",
+        `${JSON.stringify(beforeLog)}\n`,
+      );
+    } catch {
+      /* ignore */
+    }
+    fetch("http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "f92f57",
+      },
+      body: JSON.stringify(beforeLog),
+    }).catch(() => {});
+    // #endregion
+
     try {
       const res = await cafe24Api.get(url, {
         params: {
           start_date: params.startDate,
           end_date: params.endDate,
           date_type: params.dateType,
+          embed: params.embed, // 추가된 부분
           limit: 500,
         },
       });
+      // #region agent log
+      const successLog = {
+        sessionId: "f92f57",
+        runId: "post-fix",
+        hypothesisId: "A",
+        location: "lib/api/cafe24.ts:getOrders:success",
+        message: "카페24 getOrders 성공",
+        data: {
+          orderCount: (res.data.orders ?? []).length,
+          hasReadOrderScope: cachedScopes?.includes("mall.read_order") ?? false,
+        },
+        timestamp: Date.now(),
+      };
+      try {
+        fs.appendFileSync(
+          "/Users/kangsujeong/Desktop/ecommerce-admin/.cursor/debug-f92f57.log",
+          `${JSON.stringify(successLog)}\n`,
+        );
+      } catch {
+        /* ignore */
+      }
+      // #endregion
       return res.data.orders ?? [];
     } catch (err) {
       if (axios.isAxiosError(err)) {
+        // #region agent log
+        const failLog = {
+          sessionId: "f92f57",
+          runId: "post-fix",
+          hypothesisId: "A",
+          location: "lib/api/cafe24.ts:getOrders:catch",
+          message: "카페24 getOrders axios 실패",
+          data: {
+            status: err.response?.status ?? null,
+            cafe24Error: err.response?.data ?? null,
+            dateType: params.dateType,
+            hasReadOrderScope:
+              cachedScopes?.includes("mall.read_order") ?? false,
+          },
+          timestamp: Date.now(),
+        };
+        try {
+          fs.appendFileSync(
+            "/Users/kangsujeong/Desktop/ecommerce-admin/.cursor/debug-f92f57.log",
+            `${JSON.stringify(failLog)}\n`,
+          );
+        } catch {
+          /* ignore */
+        }
+        fetch(
+          "http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Debug-Session-Id": "f92f57",
+            },
+            body: JSON.stringify(failLog),
+          },
+        ).catch(() => {});
+        // #endregion
         console.error(
           `[${params.dateType}] 카페24 주문 조회 실패:`,
           err.response?.status,
@@ -522,7 +541,7 @@ export const cafe24 = {
       } else {
         console.error(`[${params.dateType}] 알 수 없는 오류:`, err);
       }
-      throw err; // sync-inventory.ts의 catch에서 계속 처리하도록 그대로 던짐
+      throw err;
     }
   },
 

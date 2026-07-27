@@ -10,7 +10,9 @@ export async function GET() {
   try {
     const { data, error } = await supabase
       .from("inventory_logs")
-      .select("id, product_name, old_stock, new_stock, created_at")
+      .select(
+        "id, product_name, old_stock, new_stock, source, modifier, created_at",
+      )
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -20,7 +22,10 @@ export async function GET() {
       id: row.id,
       product_name: row.product_name,
       change_detail: `${row.old_stock ?? 0}개 → ${row.new_stock ?? 0}개`,
-      modifier: "관리자",
+      modifier:
+        row.source === "sync"
+          ? "시스템(카페24 동기화)"
+          : (row.modifier ?? "관리자"),
       created_at: row.created_at,
     }));
 

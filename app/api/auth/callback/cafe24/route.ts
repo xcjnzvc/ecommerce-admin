@@ -49,10 +49,23 @@ export async function GET(req: NextRequest) {
       },
     );
 
-    const { access_token, refresh_token, expires_in } = tokenResponse.data;
+    const { access_token, refresh_token, expires_in, scopes } =
+      tokenResponse.data;
 
     // --- 수정된 부분 ---
     console.log("전체 응답 데이터:", JSON.stringify(tokenResponse.data));
+
+    if (Array.isArray(scopes)) {
+      try {
+        const { writeFileSync } = await import("fs");
+        writeFileSync(
+          "/tmp/cafe24-scopes.json",
+          JSON.stringify(scopes, null, 2),
+        );
+      } catch (scopeWriteErr) {
+        console.error("스코프 캐시 저장 실패:", scopeWriteErr);
+      }
+    }
 
     // 만료 시간 보정 (없으면 기본값 1시간)
     const validExpiresIn = expires_in ? Number(expires_in) : 3600;

@@ -140,56 +140,9 @@ cafe24Api.interceptors.request.use(async (config) => {
 // Shopify
 
 export const shopifyApi = axios.create({
+  baseURL: `https://${process.env.SHOPIFY_SHOP}/admin/api/2026-07`,
   headers: {
     "Content-Type": "application/json",
+    "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
   },
-});
-
-if (!process.env.SHOPIFY_CLIENT_ID) {
-  console.error("CRITICAL ERROR: SHOPIFY_CLIENT_ID is not defined!");
-}
-
-let shopifyTokenCache: { token: string; expiresAt: number } | null = null;
-let shopifyRefreshPromise: Promise<string> | null = null;
-
-async function getValidShopifyAccessToken(): Promise<string> {
-  if (shopifyTokenCache && shopifyTokenCache.expiresAt > Date.now()) {
-    return shopifyTokenCache.token;
-  }
-
-  if (shopifyRefreshPromise) {
-    return shopifyRefreshPromise;
-  }
-
-  shopifyRefreshPromise = (async () => {
-    try {
-      const response = await axios.post(
-        `https://${process.env.SHOPIFY_SHOP}/admin/oauth/access_token`,
-        {
-          client_id: process.env.SHOPIFY_CLIENT_ID,
-          client_secret: process.env.SHOPIFY_CLIENT_SECRET,
-          grant_type: "client_credentials",
-        },
-        { headers: { "Content-Type": "application/json" } },
-      );
-
-      const { access_token, expires_in } = response.data;
-      shopifyTokenCache = {
-        token: access_token,
-        expiresAt: Date.now() + (expires_in - 60) * 1000,
-      };
-
-      return access_token;
-    } finally {
-      shopifyRefreshPromise = null;
-    }
-  })();
-
-  return shopifyRefreshPromise;
-}
-
-shopifyApi.interceptors.request.use(async (config) => {
-  const token = await getValidShopifyAccessToken();
-  config.headers["X-Shopify-Access-Token"] = token;
-  return config;
 });

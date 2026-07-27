@@ -83,14 +83,12 @@ export async function syncInventory(): Promise<{
   await runWithConcurrencyLimit(validProducts, 5, async (product) => {
     const numericProductNo = Number(product.product_no);
 
-    // 4-1. 해당 상품의 Supabase row 조회
+    // 4-1. 해당 상품의 Supabase row 조회 (name도 같이 가져와서 재조회 줄임)
     const { data: row, error: selectError } = await supabase
       .from("products")
-      .select("id, shopify_inventory_item_id")
+      .select("id, name, stock, shopify_inventory_item_id")
       .eq("cafe24_product_no", numericProductNo)
       .maybeSingle();
-
-    console.log("Supabase row:", row);
 
     if (selectError) {
       errorCount++;
@@ -101,18 +99,17 @@ export async function syncInventory(): Promise<{
       return;
     }
 
-    // 4-2. Supabase stock 업데이트
-    console.log("업데이트 전", numericProductNo, product.quantity);
+    const oldStock = row?.stock ?? 0;
+    const newStock = product.quantity;
 
+    // 4-2. Supabase stock 업데이트
     const { error: updateError } = await supabase
       .from("products")
       .update({
-        stock: product.quantity,
+        stock: newStock,
         stock_synced_at: new Date().toISOString(),
       })
       .eq("cafe24_product_no", numericProductNo);
-
-    console.log("업데이트 결과", updateError);
 
     if (updateError) {
       errorCount++;
@@ -123,30 +120,31 @@ export async function syncInventory(): Promise<{
       return;
     }
 
+    // 4-3. 재고 변경 이력 기록 (실제 변경이 있을 때만, 노이즈 방지)
+    if (row && oldStock !== newStock) {
+      await supabase.from("inventory_logs").insert({
+        product_id: row.id,
+        product_name: row.name,
+        old_stock: oldStock,
+        new_stock: newStock,
+        source: "sync",
+        modifier: "system",
+      });
+    }
+
     await supabase
       .from("sync_error_log")
       .update({ resolved: true })
       .eq("product_no", numericProductNo)
       .eq("resolved", false);
 
-    console.log({
-      row,
-      inventoryItemId: row?.shopify_inventory_item_id,
-      locationId: process.env.SHOPIFY_LOCATION_ID,
-    });
-
-    // 4-3. Shopify 재고 동기화
+    // 4-4. Shopify 재고 동기화
     if (row?.shopify_inventory_item_id && process.env.SHOPIFY_LOCATION_ID) {
       try {
-        console.log("Shopify 보낼 값", {
-          inventoryItemId: row?.shopify_inventory_item_id,
-          locationId: process.env.SHOPIFY_LOCATION_ID,
-          quantity: product.quantity,
-        });
         await shopify.updateStock(
           row.shopify_inventory_item_id,
           Number(process.env.SHOPIFY_LOCATION_ID),
-          product.quantity,
+          newStock,
         );
         shopifySyncedCount++;
       } catch (shopifyError) {
