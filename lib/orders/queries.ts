@@ -16,6 +16,24 @@ function normalizeOrder(raw: Order): Order {
 }
 
 async function fetchOrders(): Promise<Order[]> {
+  // #region agent log
+  fetch("http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "cd9a7b",
+    },
+    body: JSON.stringify({
+      sessionId: "cd9a7b",
+      runId: "pre-fix",
+      hypothesisId: "D",
+      location: "queries.ts:fetchOrders",
+      message: "fetchOrders called",
+      data: {},
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   const res = await fetch("/api/orders");
   if (!res.ok) {
     const body = await res.text().catch(() => "");
