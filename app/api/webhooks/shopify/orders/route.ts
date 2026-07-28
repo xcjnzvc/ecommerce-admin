@@ -52,25 +52,6 @@ export async function POST(req: NextRequest) {
     const order = normalizeShopifyOrder(payload);
     await upsertOrderToDb(order);
 
-    // #region agent log
-    fetch("http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "cd9a7b",
-      },
-      body: JSON.stringify({
-        sessionId: "cd9a7b",
-        runId: "pre-fix",
-        hypothesisId: "E",
-        location: "webhooks/shopify/orders:upsert",
-        message: "order upserted to db",
-        data: { orderId: order.id, topic },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     return NextResponse.json({
       ok: true,
       topic,

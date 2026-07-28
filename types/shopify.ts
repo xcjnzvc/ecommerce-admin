@@ -25,6 +25,11 @@ export interface ShopifyOrderFulfillment {
   status?: string | null;
 }
 
+export interface ShopifyOrderRefund {
+  id?: number;
+  created_at?: string;
+}
+
 export interface ShopifyOrderListItem {
   id: number;
   name: string;
@@ -40,4 +45,5 @@ export interface ShopifyOrderListItem {
   shipping_address?: ShopifyOrderAddress | null;
   line_items?: ShopifyOrderLineItem[];
   fulfillments?: ShopifyOrderFulfillment[];
+  refunds?: ShopifyOrderRefund[];
 }

@@ -3,12 +3,28 @@ import type { Order } from "./types";
 
 function normalizeShopifyStatus(o: ShopifyOrderListItem): Order["status"] {
   if (o.cancelled_at) return "취소";
-  if (o.financial_status === "refunded") return "반품";
+
+  const financial = o.financial_status?.toLowerCase() ?? "";
+  if (
+    financial === "refunded" ||
+    financial === "partially_refunded" ||
+    (o.refunds?.length ?? 0) > 0
+  ) {
+    return "반품";
+  }
+  if (financial === "voided") return "취소";
+
   if (o.fulfillment_status === "fulfilled") return "배송완료";
-  if (o.fulfillment_status === "partial") return "배송중";
-  if (o.financial_status === "paid" && !o.fulfillment_status) {
+  if (
+    o.fulfillment_status === "partial" ||
+    o.fulfillment_status === "in_progress"
+  ) {
+    return "배송중";
+  }
+  if (financial === "paid" && !o.fulfillment_status) {
     return "결제완료";
   }
+
   return "결제완료";
 }
 

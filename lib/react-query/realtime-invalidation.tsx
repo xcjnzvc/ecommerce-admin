@@ -16,57 +16,12 @@ export function RealtimeQueryInvalidation() {
   useEffect(() => {
     const supabase = createClient();
 
-    // #region agent log
-    fetch("http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "cd9a7b",
-      },
-      body: JSON.stringify({
-        sessionId: "cd9a7b",
-        runId: "pre-fix",
-        hypothesisId: "A",
-        location: "realtime-invalidation.tsx:mount",
-        message: "RealtimeQueryInvalidation mounted",
-        data: {},
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     const channel = supabase
       .channel("admin-db-changes")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "orders" },
-        (payload) => {
-          // #region agent log
-          fetch(
-            "http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Debug-Session-Id": "cd9a7b",
-              },
-              body: JSON.stringify({
-                sessionId: "cd9a7b",
-                runId: "pre-fix",
-                hypothesisId: "B",
-                location: "realtime-invalidation.tsx:orders-change",
-                message: "orders postgres_changes received",
-                data: {
-                  eventType: payload.eventType,
-                  table: payload.table,
-                  hasNew: !!payload.new,
-                  hasOld: !!payload.old,
-                },
-                timestamp: Date.now(),
-              }),
-            },
-          ).catch(() => {});
-          // #endregion
+        () => {
           void queryClient.invalidateQueries({ queryKey: queryKeys.orders });
           void queryClient.invalidateQueries({
             queryKey: queryKeys.dashboardSummary,
@@ -74,27 +29,6 @@ export function RealtimeQueryInvalidation() {
           void queryClient.invalidateQueries({
             queryKey: queryKeys.bestSellers,
           });
-          // #region agent log
-          fetch(
-            "http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Debug-Session-Id": "cd9a7b",
-              },
-              body: JSON.stringify({
-                sessionId: "cd9a7b",
-                runId: "pre-fix",
-                hypothesisId: "D",
-                location: "realtime-invalidation.tsx:invalidate",
-                message: "orders invalidateQueries called",
-                data: {},
-                timestamp: Date.now(),
-              }),
-            },
-          ).catch(() => {});
-          // #endregion
         },
       )
       .on(
@@ -118,37 +52,7 @@ export function RealtimeQueryInvalidation() {
           });
         },
       )
-      .subscribe((status, err) => {
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Debug-Session-Id": "cd9a7b",
-            },
-            body: JSON.stringify({
-              sessionId: "cd9a7b",
-              runId: "pre-fix",
-              hypothesisId: "A",
-              location: "realtime-invalidation.tsx:subscribe",
-              message: "realtime channel status",
-              data: {
-                status,
-                errorMessage:
-                  err instanceof Error
-                    ? err.message
-                    : err
-                      ? String(err)
-                      : null,
-              },
-              timestamp: Date.now(),
-            }),
-          },
-        ).catch(() => {});
-        // #endregion
-      });
+      .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);

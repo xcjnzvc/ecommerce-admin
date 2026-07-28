@@ -1,0 +1,6 @@
+{"sessionId":"cd9a7b","runId":"pre-fix","hypothesisId":"D","location":"queries.ts:fetchOrders","message":"fetchOrders called","data":{},"timestamp":1785227981195}
+{"sessionId":"cd9a7b","runId":"pre-fix","hypothesisId":"D","location":"queries.ts:fetchOrders","message":"fetchOrders called","data":{},"timestamp":1785227981200}
+{"sessionId":"cd9a7b","runId":"pre-fix","hypothesisId":"A","location":"realtime-invalidation.tsx:mount","message":"RealtimeQueryInvalidation mounted","data":{},"timestamp":1785228046067}
+{"sessionId":"cd9a7b","runId":"pre-fix","hypothesisId":"D","location":"queries.ts:fetchOrders","message":"fetchOrders called","data":{},"timestamp":1785228046068}
+{"sessionId":"cd9a7b","runId":"pre-fix","hypothesisId":"A","location":"realtime-invalidation.tsx:subscribe","message":"realtime channel status","data":{"status":"SUBSCRIBED","errorMessage":null},"timestamp":1785228046520}
+{"sessionId":"cd9a7b","runId":"pre-fix","hypothesisId":"D","location":"queries.ts:fetchOrders","message":"fetchOrders called","data":{},"timestamp":1785228191553}
