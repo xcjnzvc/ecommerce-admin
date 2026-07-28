@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeShopifyOrder } from "@/lib/orders/normalize-shopify";
 import { upsertOrderToDb } from "@/lib/orders/upsert-orders";
-import { verifyShopifyWebhook } from "@/lib/orders/verify-shopify-webhook";
+import { verifyShopifyWebhookDetailed } from "@/lib/orders/verify-shopify-webhook";
 import type { ShopifyOrderListItem } from "@/types/shopify";
 
 const HANDLED_TOPICS = new Set([
@@ -19,9 +19,28 @@ export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const hmac = req.headers.get("x-shopify-hmac-sha256");
   const topic = req.headers.get("x-shopify-topic") ?? "unknown";
+  const shopDomain = req.headers.get("x-shopify-shop-domain");
 
-  if (!verifyShopifyWebhook(rawBody, hmac)) {
-    return NextResponse.json({ error: "Invalid webhook signature" }, { status: 401 });
+  console.log("Shopify webhook received:", {
+    topic,
+    shopDomain,
+    bodyLength: rawBody.length,
+    hasHmac: !!hmac,
+  });
+
+  const verification = verifyShopifyWebhookDetailed(rawBody, hmac);
+
+  if (!verification.valid) {
+    console.error("Shopify webhook HMAC rejected:", {
+      reason: verification.reason,
+      secretSource: verification.secretSource,
+      topic,
+      shopDomain,
+    });
+    return NextResponse.json(
+      { error: "Invalid webhook signature", reason: verification.reason },
+      { status: 401 },
+    );
   }
 
   if (!HANDLED_TOPICS.has(topic)) {
