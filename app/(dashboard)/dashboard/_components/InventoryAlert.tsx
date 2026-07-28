@@ -1,15 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { ShoppingBag, Package } from "lucide-react";
-
-interface InventoryItem {
-  id: string;
-  name: string;
-  stock: number;
-  cafe24_product_no: number | null;
-  status: "정상" | "부족" | "품절" | "동기화오류";
-}
+import {
+  useInventory,
+  type InventoryItem,
+} from "@/lib/inventory/queries";
 
 interface AlertItem {
   id: string;
@@ -35,39 +30,13 @@ function toAlertItem(item: InventoryItem): AlertItem {
 }
 
 export default function InventoryAlert() {
-  const [inventoryItems, setInventoryItems] = useState<AlertItem[]>([]);
+  const { data: items = [] } = useInventory();
 
-  const fetchInventory = useCallback(async () => {
-    const res = await fetch("/api/inventory");
-    if (!res.ok) throw new Error("재고 목록 조회 실패");
-    const data = await res.json();
-    const items = (data.items ?? []) as InventoryItem[];
-
-    const alerts = items
-      .filter((item) => item.status === "부족" || item.status === "품절")
-      .sort((a, b) => a.stock - b.stock)
-      .slice(0, 5)
-      .map(toAlertItem);
-
-    setInventoryItems(alerts);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        await fetchInventory();
-      } catch (err) {
-        console.error(err);
-        if (!cancelled) setInventoryItems([]);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchInventory]);
+  const inventoryItems = items
+    .filter((item) => item.status === "부족" || item.status === "품절")
+    .sort((a, b) => a.stock - b.stock)
+    .slice(0, 5)
+    .map(toAlertItem);
 
   return (
     <div className="bg-white p-6 rounded-[20px] border border-[#e2e2e2] h-full">

@@ -61,16 +61,28 @@ SHOPIFY_SHOP=
 SHOPIFY_CLIENT_ID=
 SHOPIFY_CLIENT_SECRET=
 SHOPIFY_LOCATION_ID=
+SHOPIFY_ACCESS_TOKEN=
+SHOPIFY_APP_URL=          # 배포 URL (웹훅 등록용, 예: https://your-app.vercel.app)
 CRON_SECRET=
 \`\`\`
+
+### Shopify 주문 웹훅 (실시간 주문 반영)
+
+주문은 **15분 cron 폴링을 사용하지 않습니다.** Shopify 웹훅 → `orders` 테이블 → Realtime으로 대시보드가 갱신됩니다.
+
+1. 배포 후 로그인 상태에서 `POST /api/shopify/webhooks/register` 호출 (또는 Shopify Admin에서 수동 등록)
+2. 웹훅 URL: `https://<your-domain>/api/webhooks/shopify/orders`
+3. 토픽: `orders/create`, `orders/updated`, `orders/cancelled`
+4. HMAC 검증: `SHOPIFY_CLIENT_SECRET` (또는 `SHOPIFY_WEBHOOK_SECRET`)
+
+카페24 주문은 **주문 관리 → 동기화** 버튼으로 수동 백필합니다 (카페24 웹훅은 추후).
 
 ---
 
 ## 다음 단계로 고려 중인 것
 
-- 카페24/Shopify 주문 웹훅을 통한 실시간 재고 반영 (현재는 크론 폴링 방식)
+- 카페24 주문 웹훅
 - 스마트스토어/쿠팡 등 채널 확장 (어댑터 구조로 설계, `lib/api/` 아래 서비스 레이어 추가만으로 확장 가능하도록 구성)
-- 대시보드 실데이터 연동
 
 ---
 

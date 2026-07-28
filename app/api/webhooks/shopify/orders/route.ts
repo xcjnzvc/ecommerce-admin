@@ -1,0 +1,51 @@
+import { NextRequest, NextResponse } from "next/server";
+import { normalizeShopifyOrder } from "@/lib/orders/normalize-shopify";
+import { upsertOrderToDb } from "@/lib/orders/upsert-orders";
+import { verifyShopifyWebhook } from "@/lib/orders/verify-shopify-webhook";
+import type { ShopifyOrderListItem } from "@/types/shopify";
+
+const HANDLED_TOPICS = new Set([
+  "orders/create",
+  "orders/updated",
+  "orders/cancelled",
+  "orders/paid",
+]);
+
+/**
+ * Shopify 주문 웹훅 (orders/create, orders/updated, orders/cancelled, orders/paid)
+ * 등록 URL: https://<your-domain>/api/webhooks/shopify/orders
+ */
+export async function POST(req: NextRequest) {
+  const rawBody = await req.text();
+  const hmac = req.headers.get("x-shopify-hmac-sha256");
+  const topic = req.headers.get("x-shopify-topic") ?? "unknown";
+
+  if (!verifyShopifyWebhook(rawBody, hmac)) {
+    return NextResponse.json({ error: "Invalid webhook signature" }, { status: 401 });
+  }
+
+  if (!HANDLED_TOPICS.has(topic)) {
+    return NextResponse.json({ ok: true, skipped: true, topic });
+  }
+
+  try {
+    const payload = JSON.parse(rawBody) as ShopifyOrderListItem;
+    const order = normalizeShopifyOrder(payload);
+    await upsertOrderToDb(order);
+
+    return NextResponse.json({
+      ok: true,
+      topic,
+      orderId: order.id,
+    });
+  } catch (error) {
+    console.error("Shopify 주문 웹훅 처리 실패:", topic, error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Webhook processing failed",
+      },
+      { status: 500 },
+    );
+  }
+}

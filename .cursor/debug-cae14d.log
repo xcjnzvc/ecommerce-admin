@@ -1,0 +1,6 @@
+{"sessionId":"cae14d","runId":"post-fix","hypothesisId":"H-B","location":"list-orders.ts:entry","message":"listOrdersFromDb 진입","data":{"startDate":"2026-06-28","endDate":"2026-07-28","supabaseHost":"shkiqpitucplnxtgtllk"},"timestamp":1785216950340}
+{"sessionId":"cae14d","runId":"post-fix","hypothesisId":"H-B","location":"list-orders.ts:entry","message":"listOrdersFromDb 진입","data":{"startDate":null,"endDate":null,"supabaseHost":"shkiqpitucplnxtgtllk"},"timestamp":1785216950350}
+{"sessionId":"cae14d","runId":"post-fix","hypothesisId":"H-B","location":"list-orders.ts:entry","message":"listOrdersFromDb 진입","data":{"startDate":"2026-06-01","endDate":"2026-07-28","supabaseHost":"shkiqpitucplnxtgtllk"},"timestamp":1785216950354}
+{"sessionId":"cae14d","runId":"post-fix","hypothesisId":"H-B","location":"list-orders.ts:success","message":"주문 조회 성공","data":{"rowCount":0,"sampleKeys":[],"hasChannelOrderId":false},"timestamp":1785216950497}
+{"sessionId":"cae14d","runId":"post-fix","hypothesisId":"H-B","location":"list-orders.ts:success","message":"주문 조회 성공","data":{"rowCount":0,"sampleKeys":[],"hasChannelOrderId":false},"timestamp":1785216950553}
+{"sessionId":"cae14d","runId":"post-fix","hypothesisId":"H-B","location":"list-orders.ts:success","message":"주문 조회 성공","data":{"rowCount":0,"sampleKeys":[],"hasChannelOrderId":false},"timestamp":1785216950557}

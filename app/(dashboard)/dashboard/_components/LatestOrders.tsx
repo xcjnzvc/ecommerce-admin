@@ -1,22 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Download, ChevronRight } from "lucide-react";
-import {
-  isInternalOrderStatus,
-  type Order,
-} from "@/lib/orders/types";
+import { type Order } from "@/lib/orders/types";
+import { useOrders } from "@/lib/orders/queries";
 
 const DISPLAY_LIMIT = 6;
-
-function normalizeOrder(raw: Order): Order {
-  return {
-    ...raw,
-    status: isInternalOrderStatus(raw.status) ? raw.status : "결제완료",
-    items: raw.items ?? [],
-  };
-}
 
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -69,43 +59,8 @@ const getStatusColor = (status: string) => {
 };
 
 export default function LatestOrders() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data: orders = [], isLoading } = useOrders();
   const [selectedTab, setSelectedTab] = useState("전체");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setIsLoading(true);
-      try {
-        const res = await fetch("/api/orders");
-        if (!res.ok) {
-          throw new Error(`주문 목록 조회 실패 (${res.status})`);
-        }
-        const data = (await res.json()) as { orders?: Order[] };
-        if (!cancelled) {
-          const sorted = (data.orders ?? [])
-            .map(normalizeOrder)
-            .sort(
-              (a, b) =>
-                new Date(b.created_at).getTime() -
-                new Date(a.created_at).getTime(),
-            );
-          setOrders(sorted);
-        }
-      } catch (error) {
-        console.error(error);
-        if (!cancelled) setOrders([]);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const filteredOrders = orders.filter((order) => {
     if (selectedTab === "결제완료") return order.status === "결제완료";

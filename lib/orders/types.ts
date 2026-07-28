@@ -23,8 +23,6 @@ export interface Order {
   id: string;
   channel: "cafe24" | "shopify";
   channel_order_id: string;
-  buyer_name: string;
-  buyer_phone: string;
   items: OrderItem[];
   total_price: number;
   status: InternalOrderStatus;

@@ -6,6 +6,7 @@ import {
   type DashboardSummary,
   type SalesCardTypes,
 } from "@/types/dashboard";
+import { useDashboardSummary } from "@/lib/dashboard/queries";
 import SalesCard from "./_components/SalesCard";
 import SalesTrendChart from "./_components/SalesTrendChart";
 import ChannelMixChart from "./_components/ChannelMixChart";
@@ -96,8 +97,7 @@ const EMPTY_SALES_CARDS: SalesCardTypes[] = [
 export default function DashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [isSummaryLoading, setIsSummaryLoading] = useState(true);
+  const { data: summary, isLoading: isSummaryLoading } = useDashboardSummary();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -109,31 +109,6 @@ export default function DashboardPage() {
     };
 
     fetchUser();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setIsSummaryLoading(true);
-      try {
-        const res = await fetch("/api/dashboard/summary");
-        if (!res.ok) {
-          throw new Error(`대시보드 요약 조회 실패 (${res.status})`);
-        }
-        const data = (await res.json()) as DashboardSummary;
-        if (!cancelled) setSummary(data);
-      } catch (error) {
-        console.error(error);
-        if (!cancelled) setSummary(null);
-      } finally {
-        if (!cancelled) setIsSummaryLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const salesCards = summary ? buildSalesCards(summary) : EMPTY_SALES_CARDS;

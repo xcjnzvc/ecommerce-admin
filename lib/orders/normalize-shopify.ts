@@ -12,31 +12,6 @@ function normalizeShopifyStatus(o: ShopifyOrderListItem): Order["status"] {
   return "결제완료";
 }
 
-function resolveBuyerName(o: ShopifyOrderListItem): string {
-  if (o.billing_address?.name) return o.billing_address.name;
-  if (o.shipping_address?.name) return o.shipping_address.name;
-
-  const customer = o.customer;
-  if (customer) {
-    const fullName = [customer.first_name, customer.last_name]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-    if (fullName) return fullName;
-  }
-
-  return o.email ?? "";
-}
-
-function resolveBuyerPhone(o: ShopifyOrderListItem): string {
-  return (
-    o.billing_address?.phone ||
-    o.shipping_address?.phone ||
-    o.customer?.phone ||
-    ""
-  );
-}
-
 export function normalizeShopifyOrder(o: ShopifyOrderListItem): Order {
   const latestFulfillment = o.fulfillments?.[o.fulfillments.length - 1];
 
@@ -44,8 +19,6 @@ export function normalizeShopifyOrder(o: ShopifyOrderListItem): Order {
     id: `shopify-${o.id}`,
     channel: "shopify",
     channel_order_id: o.name || String(o.id),
-    buyer_name: resolveBuyerName(o),
-    buyer_phone: resolveBuyerPhone(o),
     items: (o.line_items ?? []).map((item) => ({
       name: item.title,
       quantity: item.quantity,

@@ -1,25 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import { listOrdersFromDb } from "@/lib/orders/list-orders";
 
 export async function GET(req: NextRequest) {
-  const url = req.url;
-  const [cafe24Res, shopifyRes] = await Promise.allSettled([
-    fetch(url.replace("/api/orders", "/api/orders/cafe24")).then((r) =>
-      r.json(),
-    ),
-    fetch(url.replace("/api/orders", "/api/orders/shopify")).then((r) =>
-      r.json(),
-    ),
-  ]);
+  const { searchParams } = new URL(req.url);
+  const startDate = searchParams.get("start_date") ?? undefined;
+  const endDate = searchParams.get("end_date") ?? undefined;
 
-  const orders = [
-    ...(cafe24Res.status === "fulfilled" ? (cafe24Res.value.orders ?? []) : []),
-    ...(shopifyRes.status === "fulfilled"
-      ? (shopifyRes.value.orders ?? [])
-      : []),
-  ].sort(
-    (a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
-
-  return NextResponse.json({ orders });
+  try {
+    const orders = await listOrdersFromDb({ startDate, endDate });
+    return NextResponse.json({ orders });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "주문 목록 조회 실패",
+      },
+      { status: 500 },
+    );
+  }
 }

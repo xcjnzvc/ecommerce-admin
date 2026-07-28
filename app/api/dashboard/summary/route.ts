@@ -6,6 +6,10 @@ import {
   sumSales,
 } from "@/lib/dashboard/aggregate";
 import {
+  hasCafe24OrdersInDb,
+  listOrdersFromDb,
+} from "@/lib/orders/list-orders";
+import {
   INTERNAL_ORDER_STATUSES,
   type Order,
 } from "@/lib/orders/types";
@@ -73,45 +77,27 @@ function buildPeriodSummary(
   };
 }
 
-function extractOrders(
-  result: PromiseSettledResult<{ orders?: Order[]; error?: string }>,
-): Order[] {
-  if (result.status !== "fulfilled") return [];
-  return result.value.orders ?? [];
-}
-
 export async function GET(req: NextRequest) {
   const now = new Date();
-  const { origin, searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req.url);
 
-  // 지난달 1일~오늘까지 조회 (증감률 비교용)
   const defaultStart = startOfMonth(
     new Date(now.getFullYear(), now.getMonth() - 1, 1),
   );
   const startDate = searchParams.get("start_date") ?? toDateParam(defaultStart);
   const endDate = searchParams.get("end_date") ?? toDateParam(now);
-  const qs = `start_date=${startDate}&end_date=${endDate}`;
 
-  const [cafe24Res, shopifyRes] = await Promise.allSettled([
-    fetch(`${origin}/api/orders/cafe24?${qs}`).then((r) => r.json()),
-    fetch(`${origin}/api/orders/shopify?${qs}`).then((r) => r.json()),
+  const [orders, cafe24Available] = await Promise.all([
+    listOrdersFromDb({ startDate, endDate }),
+    hasCafe24OrdersInDb(),
   ]);
 
-  const cafe24Orders = extractOrders(cafe24Res);
-  const shopifyOrders = extractOrders(shopifyRes);
-  const orders = [...cafe24Orders, ...shopifyOrders];
-
-  const cafe24Available =
-    cafe24Res.status === "fulfilled" && cafe24Orders.length > 0;
-
-  // 오늘 / 어제
   const todayStart = startOfDay(now);
   const todayEnd = endOfDay(now);
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
   const yesterdayStart = startOfDay(yesterday);
   const yesterdayEnd = endOfDay(yesterday);
 
-  // 이번 주 / 지난 주 (월~일)
   const weekStart = startOfWeek(now);
   const prevWeekStart = new Date(weekStart);
   prevWeekStart.setDate(prevWeekStart.getDate() - 7);
@@ -119,7 +105,6 @@ export async function GET(req: NextRequest) {
     new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() - 1),
   );
 
-  // 이번 달 / 지난 달
   const monthStart = startOfMonth(now);
   const prevMonthStart = startOfMonth(
     new Date(now.getFullYear(), now.getMonth() - 1, 1),

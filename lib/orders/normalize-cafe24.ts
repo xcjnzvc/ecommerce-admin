@@ -17,8 +17,6 @@ export function normalizeCafe24Order(o: Cafe24OrderListItem): Order {
     id: o.order_id,
     channel: "cafe24",
     channel_order_id: o.order_id,
-    buyer_name: o.billing_name ?? o.buyer?.name ?? "",
-    buyer_phone: o.buyer?.cellphone || o.buyer?.phone || "",
     items: (o.items ?? []).map((item) => ({
       name: item.product_name,
       quantity: item.quantity,

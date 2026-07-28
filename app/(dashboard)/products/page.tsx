@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
   Package,
@@ -14,13 +15,17 @@ import {
   Upload,
 } from "lucide-react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Pagination, { paginateItems } from "@/app/components/Pagination";
 import SummaryCards from "@/app/components/SummaryCards";
 import ChannelBadges from "@/app/components/ChannelBadges";
 import ListFilterBar from "@/app/components/ListFilterBar";
 import BulkUploadModal from "./_components/BulkUploadModal";
+import {
+  useProducts,
+  type ProductListItem,
+} from "@/lib/products/queries";
+import { queryKeys } from "@/lib/react-query/query-keys";
 
 const PAGE_SIZE = 10;
 
@@ -30,17 +35,7 @@ const PRODUCT_STATUS_TABS = [
   { label: "임시저장", value: "임시저장" },
 ] as const;
 
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  stock: number; // 추가
-  status: "임시저장" | "판매중";
-  created_at: string;
-  images: string[] | null;
-  cafe24_product_no: number | null;
-  shopify_product_id: number | null;
-}
+type Product = ProductListItem;
 
 const getStatusStyle = (status: string) => {
   switch (status) {
@@ -55,9 +50,16 @@ const getStatusStyle = (status: string) => {
 
 export default function ProductList() {
   const router = useRouter();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const {
+    data: products = [],
+    isLoading,
+    isError,
+    error,
+  } = useProducts();
+  const loadError = isError
+    ? "상품 목록을 불러오는 중 오류가 발생했습니다."
+    : null;
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("전체");
@@ -71,58 +73,10 @@ export default function ProductList() {
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
 
   useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true);
-      try {
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from("products")
-          .select(
-            "id, name, price, stock, status, created_at, images, cafe24_product_no, shopify_product_id",
-          )
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-        setProducts(data ?? []);
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Debug-Session-Id": "69fb1b",
-            },
-            body: JSON.stringify({
-              sessionId: "69fb1b",
-              location: "products/page.tsx:loadData",
-              message: "products loaded for list",
-              data: {
-                count: (data ?? []).length,
-                sample: (data ?? [])
-                  .slice(0, 3)
-                  .map((p) => ({
-                    id: p.id,
-                    name: p.name,
-                    images: p.images,
-                    firstImage: p.images?.[0] ?? null,
-                  })),
-              },
-              timestamp: Date.now(),
-              hypothesisId: "D-E",
-            }),
-          },
-        ).catch(() => {});
-        // #endregion
-      } catch (error) {
-        console.error("상품 목록을 불러오는 중 오류가 발생했습니다.", error);
-        setLoadError("상품 목록을 불러오는 중 오류가 발생했습니다.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+    if (isError) {
+      console.error("상품 목록을 불러오는 중 오류가 발생했습니다.", error);
+    }
+  }, [isError, error]);
 
   useEffect(() => {
     const handleOutsideClick = () => {
@@ -209,23 +163,6 @@ export default function ProductList() {
     }
   };
 
-  const reloadProducts = async () => {
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("products")
-        .select(
-          "id, name, price, stock, status, created_at, images, cafe24_product_no, shopify_product_id",
-        )
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setProducts(data ?? []);
-    } catch {
-      setToastMessage("상품 목록을 다시 불러오지 못했습니다.");
-    }
-  };
-
   // 삭제
   const handleSingleDelete = async (product: Product) => {
     try {
@@ -234,7 +171,10 @@ export default function ProductList() {
       });
       if (!res.ok) throw new Error("삭제 실패");
 
-      setProducts((prev) => prev.filter((p) => p.id !== product.id));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.products }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventory }),
+      ]);
       setToastMessage("선택한 상품이 정상적으로 삭제되었습니다.");
     } catch {
       setToastMessage("삭제 중 오류가 발생했습니다.");
@@ -253,9 +193,10 @@ export default function ProductList() {
         ),
       );
 
-      setProducts((prev) =>
-        prev.filter((p) => !selectedProductIds.includes(p.id)),
-      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.products }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventory }),
+      ]);
       setToastMessage("선택하신 상품이 목록에서 정상 삭제되었습니다.");
     } catch (error) {
       setToastMessage("일부 상품 삭제 중 오류가 발생했습니다.");
@@ -599,7 +540,10 @@ export default function ProductList() {
         onClose={() => setIsBulkUploadOpen(false)}
         onComplete={async (successCount) => {
           setToastMessage(`${successCount}개 상품이 등록되었습니다.`);
-          await reloadProducts();
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: queryKeys.products }),
+            queryClient.invalidateQueries({ queryKey: queryKeys.inventory }),
+          ]);
         }}
       />
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Package,
   CheckCircle2,
@@ -16,6 +17,12 @@ import Pagination, { paginateItems } from "@/app/components/Pagination";
 import SummaryCards from "@/app/components/SummaryCards";
 import ChannelBadges from "@/app/components/ChannelBadges";
 import ListFilterBar from "@/app/components/ListFilterBar";
+import {
+  useInventory,
+  useInventoryLogs,
+  type InventoryItem,
+} from "@/lib/inventory/queries";
+import { queryKeys } from "@/lib/react-query/query-keys";
 
 const PAGE_SIZE = 10;
 const LOG_PAGE_SIZE = 10;
@@ -27,25 +34,6 @@ const INVENTORY_STATUS_TABS = [
   { label: "품절", value: "품절" },
   { label: "동기화오류", value: "동기화오류" },
 ] as const;
-
-interface InventoryItem {
-  id: string;
-  name: string;
-  stock: number;
-  stock_synced_at: string | null;
-  cafe24_product_no: number | null;
-  shopify_inventory_item_id: number | null;
-  status: "정상" | "부족" | "품절" | "동기화오류";
-  images: string[] | null;
-}
-
-interface InventoryLog {
-  id: string;
-  product_name: string;
-  change_detail: string;
-  modifier: string;
-  created_at: string;
-}
 
 const getInventoryStatusStyle = (status: string) => {
   switch (status) {
@@ -63,9 +51,22 @@ const getInventoryStatusStyle = (status: string) => {
 };
 
 export default function InventoryManagement() {
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [logs, setLogs] = useState<InventoryLog[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const {
+    data: items = [],
+    isLoading: isInventoryLoading,
+    isError: isInventoryError,
+  } = useInventory();
+  const {
+    data: logs = [],
+    isLoading: isLogsLoading,
+    isError: isLogsError,
+  } = useInventoryLogs();
+  const isLoading = isInventoryLoading || isLogsLoading;
+  const fetchErrorMessage =
+    isInventoryError || isLogsError
+      ? "재고 데이터를 불러오지 못했습니다."
+      : null;
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("전체");
@@ -79,42 +80,7 @@ export default function InventoryManagement() {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const fetchInventory = useCallback(async () => {
-    const res = await fetch("/api/inventory");
-    if (!res.ok) throw new Error("재고 목록 조회 실패");
-    const data = await res.json();
-    setItems(data.items ?? []);
-  }, []);
-
-  const fetchLogs = useCallback(async () => {
-    const res = await fetch("/api/inventory/logs");
-    if (!res.ok) throw new Error("재고 변경 이력 조회 실패");
-    const data = await res.json();
-    setLogs(data.logs ?? []);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setIsLoading(true);
-      try {
-        await Promise.all([fetchInventory(), fetchLogs()]);
-      } catch (err) {
-        console.error(err);
-        if (!cancelled) {
-          setToastMessage("재고 데이터를 불러오지 못했습니다.");
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchInventory, fetchLogs]);
+  const displayToast = toastMessage ?? fetchErrorMessage;
 
   useEffect(() => {
     if (toastMessage) {
@@ -207,7 +173,10 @@ export default function InventoryManagement() {
         throw new Error(err.error || "재고 저장 실패");
       }
 
-      await Promise.all([fetchInventory(), fetchLogs()]);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventory }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.inventoryLogs }),
+      ]);
       setToastMessage(`'${editingItem.name}' 재고 설정이 저장되었습니다.`);
       setIsEditModalOpen(false);
     } catch (err) {
@@ -230,7 +199,7 @@ export default function InventoryManagement() {
         throw new Error(data.error || "전체 재고 동기화 실패");
       }
 
-      await fetchInventory();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
       setToastMessage(
         `동기화 완료 — 상품 ${data.syncedProductCount ?? 0}개, 오류 ${data.errorCount ?? 0}건`,
       );
@@ -554,10 +523,10 @@ export default function InventoryManagement() {
         </div>
       )}
 
-      {toastMessage && (
+      {displayToast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></div>
-          <span className="text-xs font-bold">{toastMessage}</span>
+          <span className="text-xs font-bold">{displayToast}</span>
         </div>
       )}
     </div>

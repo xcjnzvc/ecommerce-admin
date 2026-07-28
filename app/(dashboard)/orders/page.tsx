@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Download,
   Package,
@@ -18,10 +19,11 @@ import ChannelBadges from "@/app/components/ChannelBadges";
 import Pagination, { paginateItems } from "@/app/components/Pagination";
 import ListFilterBar from "@/app/components/ListFilterBar";
 import {
-  isInternalOrderStatus,
   type InternalOrderStatus,
   type Order,
 } from "@/lib/orders/types";
+import { useOrders } from "@/lib/orders/queries";
+import { queryKeys } from "@/lib/react-query/query-keys";
 
 const PAGE_SIZE = 6;
 
@@ -33,14 +35,6 @@ const ORDER_STATUS_TABS = [
   { label: "배송완료", value: "배송완료" },
   { label: "취소/반품/교환", value: "CS" },
 ] as const;
-
-function normalizeOrder(raw: Order): Order {
-  return {
-    ...raw,
-    status: isInternalOrderStatus(raw.status) ? raw.status : "결제완료",
-    items: raw.items ?? [],
-  };
-}
 
 const getOrderStatusStyle = (status: InternalOrderStatus) => {
   switch (status) {
@@ -64,8 +58,16 @@ const getOrderStatusStyle = (status: InternalOrderStatus) => {
 };
 
 export default function OrderList() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const {
+    data: orders = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useOrders();
+  const fetchErrorMessage = isError
+    ? "주문 데이터를 불러오지 못했습니다."
+    : null;
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("전체");
@@ -75,6 +77,7 @@ export default function OrderList() {
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const displayToast = toastMessage ?? fetchErrorMessage;
   const [isSyncing, setIsSyncing] = useState(false);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [actionModalType, setActionModalType] = useState<
@@ -85,47 +88,32 @@ export default function OrderList() {
   const [bulkTrackingNumber, setBulkTrackingNumber] = useState("");
   const [bulkCourier, setBulkCourier] = useState("CJ대한통운");
 
-  const fetchOrders = async () => {
-    const res = await fetch("/api/orders");
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error("주문 목록 조회 실패", res.status, body);
-      throw new Error(`주문 목록 조회 실패 (${res.status})`);
-    }
-    const data = (await res.json()) as { orders?: Order[] };
-    setOrders((data.orders ?? []).map(normalizeOrder));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setIsLoading(true);
-      try {
-        await fetchOrders();
-      } catch (error) {
-        console.error(error);
-        if (!cancelled) {
-          setToastMessage("주문 데이터를 불러오지 못했습니다.");
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const handleSyncOrders = async () => {
     setIsSyncing(true);
     try {
-      await fetchOrders();
+      const res = await fetch("/api/orders/sync", { method: "POST" });
+      const body = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+      };
+      if (!res.ok || body.success === false) {
+        throw new Error(body.error || "주문 동기화 실패");
+      }
+
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orders });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboardSummary,
+      });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.bestSellers });
+      await refetch();
       setToastMessage("채널 주문을 동기화했습니다.");
     } catch (error) {
       console.error(error);
-      setToastMessage("주문 동기화에 실패했습니다.");
+      setToastMessage(
+        error instanceof Error
+          ? error.message
+          : "주문 동기화에 실패했습니다.",
+      );
     } finally {
       setIsSyncing(false);
     }
@@ -237,7 +225,7 @@ export default function OrderList() {
   };
 
   const handleBulkStatusChange = () => {
-    setOrders((prev) =>
+    queryClient.setQueryData<Order[]>(queryKeys.orders, (prev = []) =>
       prev.map((ord) =>
         selectedOrderIds.includes(ord.id)
           ? { ...ord, status: targetStatus }
@@ -255,7 +243,7 @@ export default function OrderList() {
     if (!bulkTrackingNumber.trim()) {
       return;
     }
-    setOrders((prev) =>
+    queryClient.setQueryData<Order[]>(queryKeys.orders, (prev = []) =>
       prev.map((ord) =>
         selectedOrderIds.includes(ord.id)
           ? {
@@ -743,10 +731,10 @@ export default function OrderList() {
       )}
 
       {/* 토스트 메시지 */}
-      {toastMessage && (
+      {displayToast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-2xl z-50 flex items-center gap-3">
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></div>
-          <span className="text-xs font-bold">{toastMessage}</span>
+          <span className="text-xs font-bold">{displayToast}</span>
         </div>
       )}
     </div>

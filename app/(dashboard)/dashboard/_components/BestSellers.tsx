@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { BestSellerItem } from "@/lib/dashboard/best-sellers";
+import { useBestSellers } from "@/lib/dashboard/queries";
 
 function formatRank(rank: number): string {
   return String(rank).padStart(2, "0");
@@ -18,35 +17,7 @@ function formatRevenue(revenue: number): string {
 }
 
 export default function BestSellers() {
-  const [bestProducts, setBestProducts] = useState<BestSellerItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      setIsLoading(true);
-      try {
-        const res = await fetch("/api/dashboard/best-sellers");
-        if (!res.ok) {
-          throw new Error(`베스트셀러 조회 실패 (${res.status})`);
-        }
-        const data = (await res.json()) as { bestSellers?: BestSellerItem[] };
-        if (!cancelled) {
-          setBestProducts(data.bestSellers ?? []);
-        }
-      } catch (error) {
-        console.error(error);
-        if (!cancelled) setBestProducts([]);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data: bestProducts = [], isLoading } = useBestSellers();
 
   return (
     <div className="bg-white p-6 rounded-[24px] border border-[#e2e2e2] w-full h-full flex flex-col">
