@@ -19,6 +19,14 @@ import Pagination, { paginateItems } from "@/app/components/Pagination";
 import SummaryCards from "@/app/components/SummaryCards";
 import ChannelBadges from "@/app/components/ChannelBadges";
 import ListFilterBar from "@/app/components/ListFilterBar";
+import InventoryFilterPanel from "@/app/components/FilterPanel/InventoryFilterPanel";
+import {
+  countActiveInventoryFilters,
+  DEFAULT_INVENTORY_FILTERS,
+  isDateInRange,
+  isUnsyncedToday,
+  type InventoryFilters,
+} from "@/app/components/FilterPanel/types";
 import { createClient } from "@/lib/supabase/client";
 import {
   useInventory,
@@ -26,6 +34,10 @@ import {
   type InventoryItem,
 } from "@/lib/inventory/queries";
 import { queryKeys } from "@/lib/react-query/query-keys";
+import {
+  downloadXlsx,
+  exportTimestamp,
+} from "@/lib/export/download-xlsx";
 
 const PAGE_SIZE = 10;
 const LOG_PAGE_SIZE = 10;
@@ -37,6 +49,34 @@ const INVENTORY_STATUS_TABS = [
   { label: "품절", value: "품절" },
   { label: "동기화오류", value: "동기화오류" },
 ] as const;
+
+const INVENTORY_SORT_OPTIONS = [
+  { label: "재고 적은순", value: "stock_asc" },
+  { label: "재고 많은순", value: "stock_desc" },
+  { label: "최근 동기화순", value: "synced_desc" },
+] as const;
+
+type InventorySort = (typeof INVENTORY_SORT_OPTIONS)[number]["value"];
+
+function matchesInventoryChannel(
+  item: InventoryItem,
+  channel: InventoryFilters["channel"],
+): boolean {
+  const hasCafe24 = !!item.cafe24_product_no;
+  const hasShopify = !!item.shopify_inventory_item_id;
+  switch (channel) {
+    case "cafe24":
+      return hasCafe24 && !hasShopify;
+    case "shopify":
+      return hasShopify && !hasCafe24;
+    case "both":
+      return hasCafe24 && hasShopify;
+    case "none":
+      return !hasCafe24 && !hasShopify;
+    default:
+      return true;
+  }
+}
 
 const getInventoryStatusStyle = (status: string) => {
   switch (status) {
@@ -73,6 +113,12 @@ export default function InventoryManagement() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("전체");
+  const [selectedSort, setSelectedSort] =
+    useState<InventorySort>("stock_asc");
+  const [filters, setFilters] = useState<InventoryFilters>(
+    DEFAULT_INVENTORY_FILTERS,
+  );
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [logPage, setLogPage] = useState(1);
 
@@ -129,20 +175,54 @@ export default function InventoryManagement() {
     },
   ];
 
-  const filteredItems = items.filter((item) => {
-    const matchesStatus =
-      selectedStatus === "전체" ||
-      (selectedStatus === "정상" && item.status === "정상") ||
-      (selectedStatus === "부족" && item.status === "부족") ||
-      (selectedStatus === "품절" && item.status === "품절") ||
-      (selectedStatus === "동기화오류" && item.status === "동기화오류");
+  const filteredItems = items
+    .filter((item) => {
+      const matchesStatus =
+        selectedStatus === "전체" ||
+        (selectedStatus === "정상" && item.status === "정상") ||
+        (selectedStatus === "부족" && item.status === "부족") ||
+        (selectedStatus === "품절" && item.status === "품절") ||
+        (selectedStatus === "동기화오류" && item.status === "동기화오류");
 
-    const matchesSearch = item.name
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
+      const matchesSearch = item.name
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
 
-    return matchesStatus && matchesSearch;
-  });
+      const matchesChannel = matchesInventoryChannel(item, filters.channel);
+      const matchesSyncDate = isDateInRange(
+        item.stock_synced_at,
+        filters.startDate,
+        filters.endDate,
+      );
+      const matchesUnsyncedToday =
+        !filters.unsyncedToday || isUnsyncedToday(item.stock_synced_at);
+
+      return (
+        matchesStatus &&
+        matchesSearch &&
+        matchesChannel &&
+        matchesSyncDate &&
+        matchesUnsyncedToday
+      );
+    })
+    .sort((a, b) => {
+      switch (selectedSort) {
+        case "stock_desc":
+          return b.stock - a.stock;
+        case "synced_desc": {
+          const aTime = a.stock_synced_at
+            ? new Date(a.stock_synced_at).getTime()
+            : 0;
+          const bTime = b.stock_synced_at
+            ? new Date(b.stock_synced_at).getTime()
+            : 0;
+          return bTime - aTime;
+        }
+        case "stock_asc":
+        default:
+          return a.stock - b.stock;
+      }
+    });
 
   const itemsTotalPages = Math.max(
     1,
@@ -150,10 +230,44 @@ export default function InventoryManagement() {
   );
   const currentPage = Math.min(page, itemsTotalPages);
   const pagedItems = paginateItems(filteredItems, currentPage, PAGE_SIZE);
+  const filterActiveCount = countActiveInventoryFilters(filters);
 
   const logsTotalPages = Math.max(1, Math.ceil(logs.length / LOG_PAGE_SIZE));
   const currentLogPage = Math.min(logPage, logsTotalPages);
   const pagedLogs = paginateItems(logs, currentLogPage, LOG_PAGE_SIZE);
+
+  const handleDownload = () => {
+    if (filteredItems.length === 0) {
+      setToastMessage("다운로드할 재고 데이터가 없습니다.");
+      return;
+    }
+
+    const rows = filteredItems.map((item) => {
+      const hasCafe24 = !!item.cafe24_product_no;
+      const hasShopify = !!item.shopify_inventory_item_id;
+      const channelLabel =
+        hasCafe24 && hasShopify
+          ? "카페24, Shopify"
+          : hasCafe24
+            ? "카페24"
+            : hasShopify
+              ? "Shopify"
+              : "-";
+
+      return {
+        상품명: item.name,
+        채널: channelLabel,
+        재고수량: item.stock,
+        상태: item.status,
+        마지막동기화: item.stock_synced_at
+          ? new Date(item.stock_synced_at).toLocaleString("ko-KR")
+          : "-",
+      };
+    });
+
+    downloadXlsx(rows, `재고목록_${exportTimestamp()}.xlsx`, "재고목록");
+    setToastMessage(`${rows.length}개 재고를 다운로드했습니다.`);
+  };
 
   const syncEditStockValue = (nextStock: number) => {
     const sanitizedStock = Math.max(0, Math.floor(nextStock));
@@ -338,6 +452,26 @@ export default function InventoryManagement() {
         showFilter
         showSort
         showDownload
+        sortOptions={[...INVENTORY_SORT_OPTIONS]}
+        selectedSort={selectedSort}
+        onSortChange={(value) => {
+          setSelectedSort(value as InventorySort);
+          setPage(1);
+        }}
+        isFilterOpen={isFilterOpen}
+        onFilterOpenChange={setIsFilterOpen}
+        filterActiveCount={filterActiveCount}
+        filterPanel={
+          <InventoryFilterPanel
+            value={filters}
+            onApply={(next) => {
+              setFilters(next);
+              setPage(1);
+            }}
+            onClose={() => setIsFilterOpen(false)}
+          />
+        }
+        onDownloadClick={handleDownload}
       />
 
       <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm overflow-hidden mb-10">

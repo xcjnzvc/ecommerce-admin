@@ -127,9 +127,32 @@ export const shopify = {
   },
 
   // 7. 주문 단건 조회
-  getOrder: async (orderId: number) => {
-    const res = await shopifyApi.get(`${BASE}/orders/${orderId}.json`);
-    return res.data;
+  // 목록과 동일하게 PII 필드를 제외해 Protected Customer Data 403을 방지한다.
+  getOrder: async (orderId: number): Promise<ShopifyOrderListItem> => {
+    const query = new URLSearchParams({
+      fields: [
+        "id",
+        "name",
+        "created_at",
+        "cancelled_at",
+        "financial_status",
+        "fulfillment_status",
+        "total_price",
+        "currency",
+        "line_items",
+        "fulfillments",
+      ].join(","),
+    });
+
+    try {
+      const res = await shopifyApi.get<{ order: ShopifyOrderListItem }>(
+        `${BASE}/orders/${orderId}.json?${query}`,
+      );
+      return res.data.order;
+    } catch (err) {
+      logAxiosError("shopify", "getOrder", err, { orderId });
+      throw err;
+    }
   },
 
   // 8. 배송(Fulfillment) 등록 → 송장번호 입력

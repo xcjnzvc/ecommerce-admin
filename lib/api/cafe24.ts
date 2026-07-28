@@ -417,7 +417,34 @@ export const cafe24 = {
     }
   },
 
-  // 11. 특정 주문의 품주(items) 조회 - product_no, quantity 추출용
+  // 11. 주문 단건 조회 (embed=items)
+  getOrder: async (orderId: string): Promise<Cafe24OrderListItem> => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const { data } = await supabase
+      .from("cafe24_tokens")
+      .select("mall_id")
+      .single();
+    if (!data?.mall_id) throw new Error("mall_id를 찾을 수 없습니다.");
+
+    const url = `https://${data.mall_id}.cafe24api.com/api/v2/admin/orders/${orderId}`;
+    try {
+      const res = await cafe24Api.get<{ order: Cafe24OrderListItem }>(url, {
+        params: { embed: "items" },
+      });
+      if (!res.data.order) {
+        throw new Error(`카페24 주문을 찾을 수 없습니다: ${orderId}`);
+      }
+      return res.data.order;
+    } catch (err) {
+      logAxiosError("cafe24", "getOrder", err, { orderId });
+      throw err;
+    }
+  },
+
+  // 12. 특정 주문의 품주(items) 조회 - product_no, quantity 추출용
   getOrderItems: async (orderId: string): Promise<Cafe24OrderItem[]> => {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -434,7 +461,7 @@ export const cafe24 = {
     return res.data.items ?? [];
   },
 
-  // 12. 상품 상세 조회 (재고 진짜 최신값 확보용) - 기존 getProducts와 별개로,
+  // 13. 상품 상세 조회 (재고 진짜 최신값 확보용) - 기존 getProducts와 별개로,
   //     단건 조회는 fields를 quantity 포함해서 명시적으로 요청
   getProductDetail: async (
     productNo: number,

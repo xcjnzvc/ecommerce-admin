@@ -1,8 +1,14 @@
 "use client";
 
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUpDown, Download, Filter, Search } from "lucide-react";
 
 export interface StatusTab {
+  label: string;
+  value: string;
+}
+
+export interface SortOption {
   label: string;
   value: string;
 }
@@ -18,8 +24,15 @@ export interface ListFilterBarProps {
   showFilter?: boolean;
   showSort?: boolean;
   showDownload?: boolean;
-  onFilterClick?: () => void;
-  onSortClick?: () => void;
+  /** 정렬 드롭다운 옵션. showSort=true 일 때 사용 */
+  sortOptions?: SortOption[];
+  selectedSort?: string;
+  onSortChange?: (value: string) => void;
+  /** 필터 팝오버 내용. showFilter=true 일 때 사용 */
+  filterPanel?: ReactNode;
+  isFilterOpen?: boolean;
+  onFilterOpenChange?: (open: boolean) => void;
+  filterActiveCount?: number;
   onDownloadClick?: () => void;
   className?: string;
 }
@@ -38,11 +51,39 @@ export default function ListFilterBar({
   showFilter = false,
   showSort = false,
   showDownload = false,
-  onFilterClick,
-  onSortClick,
+  sortOptions = [],
+  selectedSort,
+  onSortChange,
+  filterPanel,
+  isFilterOpen = false,
+  onFilterOpenChange,
+  filterActiveCount = 0,
   onDownloadClick,
   className = "",
 }: ListFilterBarProps) {
+  const [isSortOpen, setIsSortOpen] = useState(false);
+  const sortRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  const selectedSortLabel =
+    sortOptions.find((option) => option.value === selectedSort)?.label ??
+    "정렬";
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (sortRef.current && !sortRef.current.contains(target)) {
+        setIsSortOpen(false);
+      }
+      if (filterRef.current && !filterRef.current.contains(target)) {
+        onFilterOpenChange?.(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [onFilterOpenChange]);
+
   return (
     <div className={`flex flex-col gap-4 mb-6 ${className}`}>
       <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-transparent">
@@ -84,25 +125,77 @@ export default function ListFilterBar({
           </div>
 
           {showFilter && (
-            <button
-              type="button"
-              onClick={onFilterClick}
-              className={actionButtonClassName}
-            >
-              <Filter size={13} className="text-gray-400" />
-              필터
-            </button>
+            <div className="relative" ref={filterRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSortOpen(false);
+                  onFilterOpenChange?.(!isFilterOpen);
+                }}
+                className={`${actionButtonClassName} ${
+                  isFilterOpen || filterActiveCount > 0
+                    ? "border-[#143617]/40 text-[#143617]"
+                    : ""
+                }`}
+              >
+                <Filter size={13} className="text-gray-400" />
+                필터
+                {filterActiveCount > 0 && (
+                  <span className="ml-0.5 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full bg-[#143617] text-white text-[10px] font-bold">
+                    {filterActiveCount}
+                  </span>
+                )}
+              </button>
+
+              {isFilterOpen && filterPanel && (
+                <div className="absolute right-0 mt-1.5 bg-white border border-gray-200 rounded-2xl shadow-xl z-30">
+                  {filterPanel}
+                </div>
+              )}
+            </div>
           )}
 
-          {showSort && (
-            <button
-              type="button"
-              onClick={onSortClick}
-              className={actionButtonClassName}
-            >
-              <ArrowUpDown size={13} className="text-gray-400" />
-              정렬
-            </button>
+          {showSort && sortOptions.length > 0 && (
+            <div className="relative" ref={sortRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  onFilterOpenChange?.(false);
+                  setIsSortOpen((prev) => !prev);
+                }}
+                className={`${actionButtonClassName} ${
+                  isSortOpen ? "border-[#143617]/40 text-[#143617]" : ""
+                }`}
+              >
+                <ArrowUpDown size={13} className="text-gray-400" />
+                {selectedSortLabel}
+              </button>
+
+              {isSortOpen && (
+                <div className="absolute right-0 mt-1.5 w-44 bg-white border border-gray-200 rounded-xl shadow-xl py-1 z-30">
+                  {sortOptions.map((option) => {
+                    const isActive = option.value === selectedSort;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          onSortChange?.(option.value);
+                          setIsSortOpen(false);
+                        }}
+                        className={`w-full px-4 py-2 text-left text-xs font-semibold transition-colors ${
+                          isActive
+                            ? "bg-[#143617]/5 text-[#143617]"
+                            : "text-gray-700 hover:bg-gray-50 hover:text-[#143617]"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
 
           {showDownload && (

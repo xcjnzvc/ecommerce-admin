@@ -7,7 +7,6 @@ import {
   Package,
   CheckCircle2,
   FileEdit,
-  MoreHorizontal,
   Copy,
   Trash2,
   X,
@@ -20,12 +19,24 @@ import Pagination, { paginateItems } from "@/app/components/Pagination";
 import SummaryCards from "@/app/components/SummaryCards";
 import ChannelBadges from "@/app/components/ChannelBadges";
 import ListFilterBar from "@/app/components/ListFilterBar";
+import ProductFilterPanel from "@/app/components/FilterPanel/ProductFilterPanel";
+import {
+  countActiveProductFilters,
+  DEFAULT_PRODUCT_FILTERS,
+  isDateInRange,
+  type ProductFilters,
+} from "@/app/components/FilterPanel/types";
+import TableActionMenu from "@/app/components/TableActionMenu";
 import BulkUploadModal from "./_components/BulkUploadModal";
 import {
   useProducts,
   type ProductListItem,
 } from "@/lib/products/queries";
 import { queryKeys } from "@/lib/react-query/query-keys";
+import {
+  downloadXlsx,
+  exportTimestamp,
+} from "@/lib/export/download-xlsx";
 
 const PAGE_SIZE = 10;
 
@@ -34,6 +45,35 @@ const PRODUCT_STATUS_TABS = [
   { label: "판매중", value: "판매중" },
   { label: "임시저장", value: "임시저장" },
 ] as const;
+
+const PRODUCT_SORT_OPTIONS = [
+  { label: "등록일 최신순", value: "created_desc" },
+  { label: "등록일 오래된순", value: "created_asc" },
+  { label: "가격 높은순", value: "price_desc" },
+  { label: "가격 낮은순", value: "price_asc" },
+] as const;
+
+type ProductSort = (typeof PRODUCT_SORT_OPTIONS)[number]["value"];
+
+function matchesProductChannel(
+  product: ProductListItem,
+  channel: ProductFilters["channel"],
+): boolean {
+  const hasCafe24 = !!product.cafe24_product_no;
+  const hasShopify = !!product.shopify_product_id;
+  switch (channel) {
+    case "cafe24":
+      return hasCafe24 && !hasShopify;
+    case "shopify":
+      return hasShopify && !hasCafe24;
+    case "both":
+      return hasCafe24 && hasShopify;
+    case "none":
+      return !hasCafe24 && !hasShopify;
+    default:
+      return true;
+  }
+}
 
 type Product = ProductListItem;
 
@@ -63,6 +103,12 @@ export default function ProductList() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("전체");
+  const [selectedSort, setSelectedSort] =
+    useState<ProductSort>("created_desc");
+  const [filters, setFilters] = useState<ProductFilters>(
+    DEFAULT_PRODUCT_FILTERS,
+  );
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [page, setPage] = useState(1);
 
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
@@ -129,14 +175,38 @@ export default function ProductList() {
     },
   ];
 
-  const filteredProducts = products.filter((product) => {
-    const matchesStatus =
-      selectedStatus === "전체" || product.status === selectedStatus;
-    const matchesSearch = product.name
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    return matchesStatus && matchesSearch;
-  });
+  const filteredProducts = products
+    .filter((product) => {
+      const matchesStatus =
+        selectedStatus === "전체" || product.status === selectedStatus;
+      const matchesSearch = product.name
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      const matchesDate = isDateInRange(
+        product.created_at,
+        filters.startDate,
+        filters.endDate,
+      );
+      const matchesChannel = matchesProductChannel(product, filters.channel);
+      return matchesStatus && matchesSearch && matchesDate && matchesChannel;
+    })
+    .sort((a, b) => {
+      switch (selectedSort) {
+        case "created_asc":
+          return (
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+        case "price_desc":
+          return Number(b.price) - Number(a.price);
+        case "price_asc":
+          return Number(a.price) - Number(b.price);
+        case "created_desc":
+        default:
+          return (
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+      }
+    });
 
   const totalPages = Math.max(
     1,
@@ -144,6 +214,39 @@ export default function ProductList() {
   );
   const currentPage = Math.min(page, totalPages);
   const pagedProducts = paginateItems(filteredProducts, currentPage, PAGE_SIZE);
+  const filterActiveCount = countActiveProductFilters(filters);
+
+  const handleDownload = () => {
+    if (filteredProducts.length === 0) {
+      setToastMessage("다운로드할 상품이 없습니다.");
+      return;
+    }
+
+    const rows = filteredProducts.map((product) => {
+      const hasCafe24 = !!product.cafe24_product_no;
+      const hasShopify = !!product.shopify_product_id;
+      const channelLabel =
+        hasCafe24 && hasShopify
+          ? "카페24, Shopify"
+          : hasCafe24
+            ? "카페24"
+            : hasShopify
+              ? "Shopify"
+              : "-";
+
+      return {
+        상품명: product.name,
+        채널: channelLabel,
+        가격: Number(product.price),
+        상태: product.status,
+        재고: product.stock,
+        등록일: new Date(product.created_at).toLocaleDateString("ko-KR"),
+      };
+    });
+
+    downloadXlsx(rows, `상품목록_${exportTimestamp()}.xlsx`, "상품목록");
+    setToastMessage(`${rows.length}개 상품을 다운로드했습니다.`);
+  };
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -266,6 +369,26 @@ export default function ProductList() {
         showFilter
         showSort
         showDownload
+        sortOptions={[...PRODUCT_SORT_OPTIONS]}
+        selectedSort={selectedSort}
+        onSortChange={(value) => {
+          setSelectedSort(value as ProductSort);
+          setPage(1);
+        }}
+        isFilterOpen={isFilterOpen}
+        onFilterOpenChange={setIsFilterOpen}
+        filterActiveCount={filterActiveCount}
+        filterPanel={
+          <ProductFilterPanel
+            value={filters}
+            onApply={(next) => {
+              setFilters(next);
+              setPage(1);
+            }}
+            onClose={() => setIsFilterOpen(false)}
+          />
+        }
+        onDownloadClick={handleDownload}
       />
 
       {/* 4. 데이터 테이블 영역 */}
@@ -430,44 +553,30 @@ export default function ProductList() {
                         className="px-8 py-8.5 text-left relative"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="relative inline-block text-left">
-                          <button
-                            onClick={() =>
-                              setActiveDropdownId(
-                                activeDropdownId === product.id
-                                  ? null
-                                  : product.id,
-                              )
-                            }
-                            className="p-2 hover:bg-gray-100 rounded-full transition-all text-[#5e6e82] hover:text-[#143617]"
-                          >
-                            <MoreHorizontal size={18} />
-                          </button>
-
-                          {activeDropdownId === product.id && (
-                            <div className="absolute right-0 mt-1.5 w-24 bg-white border border-gray-200 rounded-xl shadow-xl py-1 z-20 animate-in fade-in duration-100">
-                              <button
-                                onClick={() => {
-                                  setActiveDropdownId(null);
-                                  router.push(`/products/${product.id}/edit`);
-                                }}
-                                className="w-full text-center px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-[#143617] transition-all"
-                              >
-                                수정
-                              </button>
-                              <div className="mx-2 border-t border-gray-100" />
-                              <button
-                                onClick={() => {
-                                  setActiveDropdownId(null);
-                                  handleSingleDelete(product);
-                                }}
-                                className="w-full text-center px-4 py-2.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition-all"
-                              >
-                                삭제
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        <TableActionMenu
+                          isOpen={activeDropdownId === product.id}
+                          onToggle={() =>
+                            setActiveDropdownId(
+                              activeDropdownId === product.id
+                                ? null
+                                : product.id,
+                            )
+                          }
+                          onClose={() => setActiveDropdownId(null)}
+                          menuWidth="w-24"
+                          items={[
+                            {
+                              label: "수정",
+                              onClick: () =>
+                                router.push(`/products/${product.id}/edit`),
+                            },
+                            {
+                              label: "삭제",
+                              variant: "danger",
+                              onClick: () => handleSingleDelete(product),
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   );

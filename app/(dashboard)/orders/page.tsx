@@ -6,7 +6,6 @@ import {
   Download,
   Package,
   CheckCircle2,
-  MoreHorizontal,
   X,
   AlertCircle,
   Truck,
@@ -18,12 +17,21 @@ import SummaryCards from "@/app/components/SummaryCards";
 import ChannelBadges from "@/app/components/ChannelBadges";
 import Pagination, { paginateItems } from "@/app/components/Pagination";
 import ListFilterBar from "@/app/components/ListFilterBar";
+import OrderFilterPanel from "@/app/components/FilterPanel/OrderFilterPanel";
 import {
-  type InternalOrderStatus,
-  type Order,
-} from "@/lib/orders/types";
-import { useOrders } from "@/lib/orders/queries";
+  countActiveOrderFilters,
+  DEFAULT_ORDER_FILTERS,
+  isDateInRange,
+  type OrderFilters,
+} from "@/app/components/FilterPanel/types";
+import TableActionMenu from "@/app/components/TableActionMenu";
+import { type InternalOrderStatus, type Order } from "@/lib/orders/types";
+import { useOrderDetail, useOrders } from "@/lib/orders/queries";
 import { queryKeys } from "@/lib/react-query/query-keys";
+import {
+  downloadXlsx,
+  exportTimestamp,
+} from "@/lib/export/download-xlsx";
 
 const PAGE_SIZE = 6;
 
@@ -35,6 +43,15 @@ const ORDER_STATUS_TABS = [
   { label: "배송완료", value: "배송완료" },
   { label: "취소/반품/교환", value: "CS" },
 ] as const;
+
+const ORDER_SORT_OPTIONS = [
+  { label: "주문일 최신순", value: "created_desc" },
+  { label: "주문일 오래된순", value: "created_asc" },
+  { label: "결제금액 높은순", value: "price_desc" },
+  { label: "결제금액 낮은순", value: "price_asc" },
+] as const;
+
+type OrderSort = (typeof ORDER_SORT_OPTIONS)[number]["value"];
 
 const getOrderStatusStyle = (status: InternalOrderStatus) => {
   switch (status) {
@@ -59,18 +76,17 @@ const getOrderStatusStyle = (status: InternalOrderStatus) => {
 
 export default function OrderList() {
   const queryClient = useQueryClient();
-  const {
-    data: orders = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useOrders();
+  const { data: orders = [], isLoading, isError, refetch } = useOrders();
   const fetchErrorMessage = isError
     ? "주문 데이터를 불러오지 못했습니다."
     : null;
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("전체");
+  const [selectedSort, setSelectedSort] =
+    useState<OrderSort>("created_desc");
+  const [filters, setFilters] = useState<OrderFilters>(DEFAULT_ORDER_FILTERS);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [page, setPage] = useState(1);
 
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -81,12 +97,21 @@ export default function OrderList() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [actionModalType, setActionModalType] = useState<
-    "status" | "tracking" | null
+    // "status" | "tracking" | null
+    "status" | null
   >(null);
   const [targetStatus, setTargetStatus] =
     useState<InternalOrderStatus>("배송준비중");
-  const [bulkTrackingNumber, setBulkTrackingNumber] = useState("");
-  const [bulkCourier, setBulkCourier] = useState("CJ대한통운");
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+  const {
+    data: detailOrder,
+    isLoading: isDetailLoading,
+    isError: isDetailError,
+    error: detailError,
+  } = useOrderDetail(detailOrderId);
+  // 송장 등록 관련 (임시 비활성)
+  // const [bulkTrackingNumber, setBulkTrackingNumber] = useState("");
+  // const [bulkCourier, setBulkCourier] = useState("CJ대한통운");
 
   const handleSyncOrders = async () => {
     setIsSyncing(true);
@@ -110,9 +135,7 @@ export default function OrderList() {
     } catch (error) {
       console.error(error);
       setToastMessage(
-        error instanceof Error
-          ? error.message
-          : "주문 동기화에 실패했습니다.",
+        error instanceof Error ? error.message : "주문 동기화에 실패했습니다.",
       );
     } finally {
       setIsSyncing(false);
@@ -176,37 +199,112 @@ export default function OrderList() {
     },
   ];
 
-  const filteredOrders = orders.filter((order) => {
-    let matchesStatus = true;
-    if (
-      selectedStatus === "신규 주문 (미처리)" ||
-      selectedStatus === "결제완료"
-    ) {
-      matchesStatus = order.status === "결제완료";
-    } else if (selectedStatus === "배송중") {
-      matchesStatus = order.status === "배송중";
-    } else if (
-      selectedStatus === "취소/반품/교환 요청" ||
-      selectedStatus === "CS"
-    ) {
-      matchesStatus = ["취소", "반품", "교환"].includes(order.status);
-    } else if (selectedStatus !== "전체") {
-      matchesStatus = order.status === selectedStatus;
-    }
+  const filteredOrders = orders
+    .filter((order) => {
+      let matchesStatus = true;
+      if (
+        selectedStatus === "신규 주문 (미처리)" ||
+        selectedStatus === "결제완료"
+      ) {
+        matchesStatus = order.status === "결제완료";
+      } else if (selectedStatus === "배송중") {
+        matchesStatus = order.status === "배송중";
+      } else if (
+        selectedStatus === "취소/반품/교환 요청" ||
+        selectedStatus === "CS"
+      ) {
+        matchesStatus = ["취소", "반품", "교환"].includes(order.status);
+      } else if (selectedStatus !== "전체") {
+        matchesStatus = order.status === selectedStatus;
+      }
 
-    const matchesSearch =
-      order.channel_order_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.items.some((item) =>
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()),
+      const matchesSearch =
+        order.channel_order_id
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.items.some((item) =>
+          item.name.toLowerCase().includes(searchTerm.toLowerCase()),
+        );
+
+      const matchesDate = isDateInRange(
+        order.created_at,
+        filters.startDate,
+        filters.endDate,
       );
+      const matchesChannel =
+        filters.channel === "all" || order.channel === filters.channel;
+      const matchesMinPrice =
+        filters.minPrice == null || order.total_price >= filters.minPrice;
+      const matchesMaxPrice =
+        filters.maxPrice == null || order.total_price <= filters.maxPrice;
+      const matchesTracking =
+        filters.hasTracking == null ||
+        (filters.hasTracking
+          ? !!order.tracking_number
+          : !order.tracking_number);
 
-    return matchesStatus && matchesSearch;
-  });
+      return (
+        matchesStatus &&
+        matchesSearch &&
+        matchesDate &&
+        matchesChannel &&
+        matchesMinPrice &&
+        matchesMaxPrice &&
+        matchesTracking
+      );
+    })
+    .sort((a, b) => {
+      switch (selectedSort) {
+        case "created_asc":
+          return (
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+        case "price_desc":
+          return b.total_price - a.total_price;
+        case "price_asc":
+          return a.total_price - b.total_price;
+        case "created_desc":
+        default:
+          return (
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+      }
+    });
 
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const pagedOrders = paginateItems(filteredOrders, currentPage, PAGE_SIZE);
+  const filterActiveCount = countActiveOrderFilters(filters);
+
+  const handleDownload = () => {
+    if (filteredOrders.length === 0) {
+      setToastMessage("다운로드할 주문이 없습니다.");
+      return;
+    }
+
+    const rows = filteredOrders.map((order) => {
+      const firstItemName = order.items[0]?.name || "상품";
+      const otherCount = order.items.length - 1;
+      const productInfo =
+        otherCount > 0 ? `${firstItemName} 외 ${otherCount}건` : firstItemName;
+
+      return {
+        주문번호: order.id,
+        원본주문번호: order.channel_order_id,
+        채널: order.channel === "cafe24" ? "카페24" : "Shopify",
+        상품정보: productInfo,
+        결제금액: order.total_price,
+        주문상태: order.status,
+        송장번호: order.tracking_number ?? "미등록",
+        택배사: order.courier_company ?? "",
+        주문일시: new Date(order.created_at).toLocaleString("ko-KR"),
+      };
+    });
+
+    downloadXlsx(rows, `주문목록_${exportTimestamp()}.xlsx`, "주문목록");
+    setToastMessage(`${rows.length}개 주문을 다운로드했습니다.`);
+  };
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -239,29 +337,30 @@ export default function OrderList() {
     setIsActionModalOpen(false);
   };
 
-  const handleBulkTrackingRegister = () => {
-    if (!bulkTrackingNumber.trim()) {
-      return;
-    }
-    queryClient.setQueryData<Order[]>(queryKeys.orders, (prev = []) =>
-      prev.map((ord) =>
-        selectedOrderIds.includes(ord.id)
-          ? {
-              ...ord,
-              tracking_number: bulkTrackingNumber,
-              courier_company: bulkCourier,
-              status: "배송중",
-            }
-          : ord,
-      ),
-    );
-    setToastMessage(
-      `선택하신 ${selectedOrderIds.length}개 주문에 송장번호가 일괄 등록되었습니다.`,
-    );
-    setSelectedOrderIds([]);
-    setIsActionModalOpen(false);
-    setBulkTrackingNumber("");
-  };
+  // 송장 등록 관련 (임시 비활성)
+  // const handleBulkTrackingRegister = () => {
+  //   if (!bulkTrackingNumber.trim()) {
+  //     return;
+  //   }
+  //   queryClient.setQueryData<Order[]>(queryKeys.orders, (prev = []) =>
+  //     prev.map((ord) =>
+  //       selectedOrderIds.includes(ord.id)
+  //         ? {
+  //             ...ord,
+  //             tracking_number: bulkTrackingNumber,
+  //             courier_company: bulkCourier,
+  //             status: "배송중",
+  //           }
+  //         : ord,
+  //     ),
+  //   );
+  //   setToastMessage(
+  //     `선택하신 ${selectedOrderIds.length}개 주문에 송장번호가 일괄 등록되었습니다.`,
+  //   );
+  //   setSelectedOrderIds([]);
+  //   setIsActionModalOpen(false);
+  //   setBulkTrackingNumber("");
+  // };
 
   return (
     <div className="max-w-[1600px] mx-auto w-full p-8 bg-[#f8f9fa] min-h-screen font-sans relative pb-28">
@@ -299,9 +398,7 @@ export default function OrderList() {
           </button>
 
           <button
-            onClick={() =>
-              setToastMessage("엑셀 주문 리스트 다운로드가 시작되었습니다.")
-            }
+            onClick={handleDownload}
             className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#143617] text-white rounded-xl text-sm font-semibold hover:bg-[#0d240f] transition-colors shadow-sm w-full md:w-auto"
           >
             <Download size={16} /> 주문 엑셀 다운로드
@@ -336,6 +433,26 @@ export default function OrderList() {
         showFilter
         showSort
         showDownload
+        sortOptions={[...ORDER_SORT_OPTIONS]}
+        selectedSort={selectedSort}
+        onSortChange={(value) => {
+          setSelectedSort(value as OrderSort);
+          setPage(1);
+        }}
+        isFilterOpen={isFilterOpen}
+        onFilterOpenChange={setIsFilterOpen}
+        filterActiveCount={filterActiveCount}
+        filterPanel={
+          <OrderFilterPanel
+            value={filters}
+            onApply={(next) => {
+              setFilters(next);
+              setPage(1);
+            }}
+            onClose={() => setIsFilterOpen(false)}
+          />
+        }
+        onDownloadClick={handleDownload}
       />
 
       {/* 4. 데이터 테이블 영역 */}
@@ -503,59 +620,44 @@ export default function OrderList() {
 
                       {/* 관리 버튼 및 드롭다운 */}
                       <td
-                        className="px-6 py-5 text-left relative"
+                        className="px-6 py-5 text-center relative"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="relative inline-block text-left">
-                          <button
-                            onClick={() =>
-                              setActiveDropdownId(
-                                activeDropdownId === order.id ? null : order.id,
-                              )
-                            }
-                            className="p-1.5 hover:bg-gray-100 rounded-full transition-all text-[#5e6e82] hover:text-[#143617]"
-                          >
-                            <MoreHorizontal size={16} />
-                          </button>
-
-                          {activeDropdownId === order.id && (
-                            <div className="absolute right-0 mt-1 w-32 bg-white border border-gray-200 rounded-xl shadow-xl py-1 z-20">
-                              <button
-                                onClick={() => {
-                                  setActiveDropdownId(null);
-                                  setToastMessage(
-                                    `주문 상세정보 (${order.id}) 창을 엽니다.`,
-                                  );
-                                }}
-                                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-[#143617]"
-                              >
-                                상세보기
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setActiveDropdownId(null);
-                                  setSelectedOrderIds([order.id]);
-                                  setActionModalType("tracking");
-                                  setIsActionModalOpen(true);
-                                }}
-                                className="w-full text-left px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-[#143617]"
-                              >
-                                송장등록
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setActiveDropdownId(null);
-                                  setSelectedOrderIds([order.id]);
-                                  setActionModalType("status");
-                                  setIsActionModalOpen(true);
-                                }}
-                                className="w-full text-left px-4 py-2 text-xs font-semibold text-indigo-600 hover:bg-indigo-50"
-                              >
-                                상태변경
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        <TableActionMenu
+                          isOpen={activeDropdownId === order.id}
+                          onToggle={() =>
+                            setActiveDropdownId(
+                              activeDropdownId === order.id ? null : order.id,
+                            )
+                          }
+                          onClose={() => setActiveDropdownId(null)}
+                          iconSize={16}
+                          triggerClassName="p-1.5 hover:bg-gray-100 rounded-full transition-all text-[#5e6e82] hover:text-[#143617]"
+                          items={[
+                            {
+                              label: "상세보기",
+                              onClick: () => setDetailOrderId(order.id),
+                            },
+                            // 송장 등록 관련 (임시 비활성)
+                            // {
+                            //   label: "송장등록",
+                            //   onClick: () => {
+                            //     setSelectedOrderIds([order.id]);
+                            //     setActionModalType("tracking");
+                            //     setIsActionModalOpen(true);
+                            //   },
+                            // },
+                            {
+                              label: "상태변경",
+                              variant: "primary",
+                              onClick: () => {
+                                setSelectedOrderIds([order.id]);
+                                setActionModalType("status");
+                                setIsActionModalOpen(true);
+                              },
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   );
@@ -586,6 +688,7 @@ export default function OrderList() {
           <div className="h-4 w-px bg-gray-200"></div>
 
           <div className="flex items-center gap-2">
+            {/* 송장 등록 관련 (임시 비활성)
             <button
               onClick={() => {
                 setActionModalType("tracking");
@@ -596,6 +699,7 @@ export default function OrderList() {
               <Truck size={14} className="text-indigo-600" />
               송장 일괄 등록
             </button>
+            */}
             <button
               onClick={() => {
                 setActionModalType("status");
@@ -617,10 +721,186 @@ export default function OrderList() {
         </div>
       )}
 
+      {/* 주문 상세 모달 */}
+      {detailOrderId && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-gray-100 max-w-lg w-full p-6 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-5">
+              <div>
+                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <Package className="text-[#143617]" size={18} />
+                  주문 상세
+                </h3>
+                <p className="text-xs text-gray-500 mt-1 font-mono">
+                  {detailOrderId}
+                </p>
+              </div>
+              <button
+                onClick={() => setDetailOrderId(null)}
+                className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-all"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {isDetailLoading ? (
+              <div className="py-16 text-center">
+                <div className="animate-spin inline-block w-7 h-7 border-4 border-[#143617] border-t-transparent rounded-full mb-3" />
+                <p className="text-xs text-gray-400 font-medium">
+                  채널에서 주문 상세를 불러오는 중...
+                </p>
+              </div>
+            ) : isDetailError ? (
+              <div className="py-12 text-center">
+                <AlertCircle className="mx-auto mb-2 text-red-400" size={28} />
+                <p className="text-sm font-semibold text-gray-800">
+                  주문 상세를 불러오지 못했습니다.
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {detailError instanceof Error
+                    ? detailError.message
+                    : "알 수 없는 오류"}
+                </p>
+              </div>
+            ) : detailOrder ? (
+              <div className="space-y-5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50 rounded-xl border border-gray-100 p-3">
+                    <p className="text-[11px] font-bold text-gray-400 mb-1">
+                      채널
+                    </p>
+                    <ChannelBadges
+                      cafe24={detailOrder.channel === "cafe24"}
+                      shopify={detailOrder.channel === "shopify"}
+                    />
+                  </div>
+                  <div className="bg-gray-50 rounded-xl border border-gray-100 p-3">
+                    <p className="text-[11px] font-bold text-gray-400 mb-1">
+                      주문상태
+                    </p>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-1 text-xs font-bold rounded-lg border ${getOrderStatusStyle(
+                        detailOrder.status,
+                      )}`}
+                    >
+                      {detailOrder.status}
+                    </span>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl border border-gray-100 p-3">
+                    <p className="text-[11px] font-bold text-gray-400 mb-1">
+                      원본 주문번호
+                    </p>
+                    <p className="text-xs font-mono font-semibold text-gray-800">
+                      {detailOrder.channel_order_id}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl border border-gray-100 p-3">
+                    <p className="text-[11px] font-bold text-gray-400 mb-1">
+                      주문일시
+                    </p>
+                    <p className="text-xs font-semibold text-gray-800">
+                      {new Date(detailOrder.created_at).toLocaleString("ko-KR")}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold text-gray-700 mb-2">
+                    상품 목록
+                  </p>
+                  <div className="rounded-xl border border-gray-100 overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-[#fcfdfe] text-gray-500">
+                        <tr>
+                          <th className="px-3 py-2.5 text-left font-bold">
+                            상품명
+                          </th>
+                          <th className="px-3 py-2.5 text-right font-bold">
+                            수량
+                          </th>
+                          <th className="px-3 py-2.5 text-right font-bold">
+                            단가
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {detailOrder.items.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-3 py-6 text-center text-gray-400"
+                            >
+                              상품 정보가 없습니다.
+                            </td>
+                          </tr>
+                        ) : (
+                          detailOrder.items.map((item, index) => (
+                            <tr key={`${item.product_id ?? "item"}-${index}`}>
+                              <td className="px-3 py-2.5 font-semibold text-gray-900">
+                                {item.name}
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono text-gray-700">
+                                {item.quantity}
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono text-gray-700">
+                                {item.price != null
+                                  ? `${item.price.toLocaleString()}원`
+                                  : "-"}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between bg-[#143617]/5 rounded-xl px-4 py-3">
+                  <span className="text-xs font-bold text-gray-600">
+                    결제금액
+                  </span>
+                  <span className="text-sm font-extrabold text-[#143617]">
+                    {detailOrder.total_price.toLocaleString()}원
+                  </span>
+                </div>
+
+                <div className="bg-gray-50 rounded-xl border border-gray-100 p-3">
+                  <p className="text-[11px] font-bold text-gray-400 mb-1">
+                    배송정보
+                  </p>
+                  {detailOrder.tracking_number ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-mono text-xs font-semibold text-gray-800">
+                        {detailOrder.tracking_number}
+                      </span>
+                      <span className="text-[11px] text-gray-400">
+                        {detailOrder.courier_company || "택배"}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400">미등록</span>
+                  )}
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setDetailOrderId(null)}
+                    className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl text-xs font-bold text-gray-700 transition-colors"
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+
       {/* 액션 모달 */}
       {isActionModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-gray-100 max-w-md w-full p-6 shadow-2xl">
+            {/* 송장 등록 관련 (임시 비활성)
             {actionModalType === "tracking" ? (
               <>
                 <h3 className="text-base font-bold text-gray-900 mb-1 flex items-center gap-2">
@@ -679,6 +959,8 @@ export default function OrderList() {
                 </div>
               </>
             ) : (
+            */}
+            {actionModalType === "status" && (
               <>
                 <h3 className="text-base font-bold text-gray-900 mb-1 flex items-center gap-2">
                   <CheckCircle2 className="text-emerald-600" size={18} /> 주문
@@ -726,6 +1008,7 @@ export default function OrderList() {
                 </div>
               </>
             )}
+            {/* )} */}
           </div>
         </div>
       )}
