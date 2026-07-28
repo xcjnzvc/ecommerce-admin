@@ -39,7 +39,7 @@ export function ProductBasicInfoSection({
   imageSlot,
 }: ProductBasicInfoSectionProps) {
   return (
-    <Section title="1. 기본 정보">
+    <Section title="1. 기본 정보" id="product-section-basic">
       <div className="grid grid-cols-2 gap-4">
         <FormField label="상품명" error={errors.name?.message}>
           <input

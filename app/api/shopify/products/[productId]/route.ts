@@ -72,6 +72,7 @@ export async function DELETE(
 
   try {
     try {
+      // Shopify 원격 상태가 이미 어긋났을 수 있으므로, 원격 삭제는 best-effort로 시도한다.
       await shopify.deleteProduct(productId);
     } catch (shopifyError) {
       console.warn(

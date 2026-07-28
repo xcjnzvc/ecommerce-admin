@@ -11,6 +11,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Save } from "lucide-react";
 import {
   foodProductCreateSchema,
+  foodProductDraftCreateSchema,
+  sanitizeProductOptions,
   type FoodProductCreateValues,
   type FoodProductCreateInput,
 } from "./food-product.schema";
@@ -23,6 +25,15 @@ import { LegalInfoSection } from "./shared/legal-info-section";
 import { ChannelInfoSection } from "./shared/channel-info-section";
 import { ProductPreviewSection } from "./shared/product-preview-section";
 import { FormInputStyles } from "./shared/form-ui";
+import { FormValidationAlert } from "./form-validation-alert";
+import {
+  collectFormErrorMessages,
+  focusFirstFormError,
+  scrollToFormField,
+  getSectionForFieldPath,
+  type ProductFormSection,
+} from "./hooks/use-form-scroll-to-error";
+import { applyZodErrors } from "./hooks/apply-zod-errors";
 
 const emptyDefaults: FoodProductCreateInput = {
   name: "",
@@ -57,6 +68,10 @@ export default function FoodProductCreateForm() {
     handleSubmit,
     watch,
     setValue,
+    setError,
+    clearErrors,
+    getValues,
+    setFocus,
     formState: { errors },
   } = useForm<FoodProductCreateInput, unknown, FoodProductCreateValues>({
     resolver: zodResolver(
@@ -104,6 +119,48 @@ export default function FoodProductCreateForm() {
   const shopifyChecked = watch("channels.shopify");
   const cafe24Checked = watch("channels.cafe24");
   const formSnapshot = watch();
+
+  const [validationMessages, setValidationMessages] = React.useState<string[]>(
+    [],
+  );
+
+  const openSectionForValidation = (section: ProductFormSection) => {
+    if (section === "options") setIsOptionsOpen(true);
+    if (section === "legal") setIsLegalOpen(true);
+  };
+
+  const handleInvalidSubmit = (
+    fieldErrors: typeof errors = errors,
+  ) => {
+    const messages = collectFormErrorMessages(fieldErrors);
+    setValidationMessages(messages);
+    focusFirstFormError(fieldErrors, setFocus, openSectionForValidation);
+  };
+
+  const handleDraftSubmit = async () => {
+    clearErrors();
+    setValidationMessages([]);
+    setSaveError(null);
+
+    const parsed = foodProductDraftCreateSchema.safeParse(getValues());
+    if (!parsed.success) {
+      applyZodErrors(parsed.error, setError);
+      const messages = parsed.error.issues.map((issue) => issue.message);
+      setValidationMessages(messages);
+
+      const firstPath = parsed.error.issues[0]?.path.join(".");
+      if (firstPath) {
+        openSectionForValidation(getSectionForFieldPath(firstPath));
+        scrollToFormField(firstPath, setFocus);
+      }
+      return;
+    }
+
+    await onSubmit(
+      sanitizeProductOptions(parsed.data) as FoodProductCreateValues,
+      "임시저장",
+    );
+  };
 
   const handleChannelToggle = (
     channel: "shopify" | "cafe24",
@@ -182,8 +239,16 @@ export default function FoodProductCreateForm() {
 
         <form
           className="space-y-6"
-          onSubmit={handleSubmit((data) => onSubmit(data, "판매중"))}
+          onSubmit={handleSubmit(
+            (data) => {
+              setValidationMessages([]);
+              return onSubmit(sanitizeProductOptions(data), "판매중");
+            },
+            handleInvalidSubmit,
+          )}
         >
+          <FormValidationAlert messages={validationMessages} />
+
           <ProductBasicInfoSection
             register={register}
             control={control}
@@ -208,6 +273,7 @@ export default function FoodProductCreateForm() {
             remove={remove}
             isOpen={isOptionsOpen}
             onToggle={() => setIsOptionsOpen((v) => !v)}
+            errors={errors}
           />
 
           <LegalInfoSection
@@ -244,7 +310,7 @@ export default function FoodProductCreateForm() {
             <button
               type="button"
               disabled={isSaving}
-              onClick={handleSubmit((data) => onSubmit(data, "임시저장"))}
+              onClick={handleDraftSubmit}
               className="px-6 py-2 border rounded-lg font-semibold hover:bg-slate-100 disabled:opacity-50"
             >
               임시저장

@@ -31,7 +31,10 @@ export function ChannelInfoSection({
   onChannelToggle,
 }: ChannelInfoSectionProps) {
   return (
-    <Section title="4. 채널 선택 및 정보">
+    <Section
+      title="4. 채널 선택 및 정보"
+      id="product-section-channels"
+    >
       {errors.channels && (
         <p className="text-xs text-red-600 -mt-2">
           {errors.channels.message as string}

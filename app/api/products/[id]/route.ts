@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cafe24, imageUrlToBase64 } from "@/lib/api/cafe24";
+import { cafe24, imageUrlToBase64, type ProductInput } from "@/lib/api/cafe24";
 import { shopify } from "@/lib/api/shopify";
 import { createClient } from "@supabase/supabase-js";
-import axios from "axios";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,14 +36,13 @@ export async function PUT(
 ) {
   const { id } = await params;
   const body = await req.json();
-
-  const {
-    detail_image,
-    list_image,
-    small_image,
-    tiny_image,
-    ...productFields
-  } = body;
+  const detail_image =
+    typeof body.detail_image === "string" ? body.detail_image : undefined;
+  const productFields = { ...body } as Partial<ProductInput>;
+  delete productFields.detail_image;
+  delete productFields.list_image;
+  delete productFields.small_image;
+  delete productFields.tiny_image;
 
   // row 조회해서 각 채널 연동 정보 확보 (필요한 컬럼만 조회)
   const { data: row, error: rowError } = await supabase
@@ -122,6 +120,7 @@ export async function DELETE(
   try {
     if (row?.cafe24_product_no) {
       try {
+        // 외부 채널 삭제는 best-effort로 처리하고, 내부 DB 기준 정리를 우선한다.
         await cafe24.deleteProduct(row.cafe24_product_no);
       } catch (cafe24Error) {
         console.warn("카페24 상품 삭제 실패:", cafe24Error);
@@ -129,6 +128,7 @@ export async function DELETE(
     }
     if (row?.shopify_product_id) {
       try {
+        // Shopify 삭제 실패도 동일하게 로그만 남기고 내부 상품 정리를 계속 진행한다.
         await shopify.deleteProduct(row.shopify_product_id);
       } catch (shopifyError) {
         console.warn("Shopify 상품 삭제 실패:", shopifyError);

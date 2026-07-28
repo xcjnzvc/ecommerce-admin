@@ -12,11 +12,14 @@ import {
   X,
   Check,
   AlertCircle,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import Pagination, { paginateItems } from "@/app/components/Pagination";
 import SummaryCards from "@/app/components/SummaryCards";
 import ChannelBadges from "@/app/components/ChannelBadges";
 import ListFilterBar from "@/app/components/ListFilterBar";
+import { createClient } from "@/lib/supabase/client";
 import {
   useInventory,
   useInventoryLogs,
@@ -76,6 +79,7 @@ export default function InventoryManagement() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [editStock, setEditStock] = useState<number>(0);
+  const [editStockInput, setEditStockInput] = useState("0");
   const [isSaving, setIsSaving] = useState(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -151,35 +155,90 @@ export default function InventoryManagement() {
   const currentLogPage = Math.min(logPage, logsTotalPages);
   const pagedLogs = paginateItems(logs, currentLogPage, LOG_PAGE_SIZE);
 
+  const syncEditStockValue = (nextStock: number) => {
+    const sanitizedStock = Math.max(0, Math.floor(nextStock));
+    setEditStock(sanitizedStock);
+    setEditStockInput(String(sanitizedStock));
+  };
+
   const handleOpenEditModal = (item: InventoryItem) => {
     setEditingItem(item);
-    setEditStock(item.stock);
+    syncEditStockValue(item.stock);
     setIsEditModalOpen(true);
+  };
+
+  const handleEditStockInputChange = (value: string) => {
+    if (value === "") {
+      setEditStockInput("");
+      return;
+    }
+
+    if (!/^\d+$/.test(value)) {
+      return;
+    }
+
+    const normalizedValue = value.replace(/^0+(?=\d)/, "");
+    setEditStock(Number(normalizedValue));
+    setEditStockInput(normalizedValue);
   };
 
   const handleSaveInventory = async () => {
     if (!editingItem) return;
 
+    const stockToSave = editStockInput.trim() === "" ? 0 : editStock;
+
     setIsSaving(true);
     try {
+      const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      // #region agent log
+      fetch('http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b1b16a'},body:JSON.stringify({sessionId:'b1b16a',runId:'inventory-save',hypothesisId:'A',location:'inventory/page.tsx:196',message:'before stock save request',data:{productId:editingItem.id,stockToSave,editStock,editStockInput,hasSessionUser:Boolean(session?.user.email)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
       const res = await fetch(`/api/products/${editingItem.id}/stock`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stock: editStock }),
+        body: JSON.stringify({
+          stock: stockToSave,
+          modifier: session?.user.email ?? null,
+        }),
       });
+
+      // #region agent log
+      fetch('http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b1b16a'},body:JSON.stringify({sessionId:'b1b16a',runId:'inventory-save',hypothesisId:'D',location:'inventory/page.tsx:208',message:'after stock save response',data:{productId:editingItem.id,responseOk:res.ok,status:res.status},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "재고 저장 실패");
       }
 
+      const result = (await res.json()) as {
+        success?: boolean;
+        warnings?: string[];
+      };
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.inventory }),
         queryClient.invalidateQueries({ queryKey: queryKeys.inventoryLogs }),
       ]);
-      setToastMessage(`'${editingItem.name}' 재고 설정이 저장되었습니다.`);
+
+      if (result.warnings?.length) {
+        setToastMessage(
+          `'${editingItem.name}' 재고는 저장됐지만 일부 채널 동기화에 실패했습니다.`,
+        );
+      } else {
+        setToastMessage(`'${editingItem.name}' 재고 설정이 저장되었습니다.`);
+      }
+      syncEditStockValue(stockToSave);
       setIsEditModalOpen(false);
     } catch (err) {
+      // #region agent log
+      fetch('http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b1b16a'},body:JSON.stringify({sessionId:'b1b16a',runId:'inventory-save',hypothesisId:'D',location:'inventory/page.tsx:224',message:'stock save threw on client',data:{productId:editingItem?.id ?? null,error:err instanceof Error ? err.message : String(err)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       console.error(err);
       setToastMessage(
         err instanceof Error ? err.message : "재고 저장에 실패했습니다.",
@@ -388,12 +447,12 @@ export default function InventoryManagement() {
                     </td>
 
                     <td
-                      className="px-8 py-6 text-left"
+                      className="px-2 py-6 text-left"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <button
                         onClick={() => handleOpenEditModal(item)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gray-100 hover:bg-[#143617] hover:text-white rounded-xl text-xs font-bold text-gray-700 transition-all cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-4.5 py-2.5 bg-gray-100 hover:bg-[#143617] hover:text-white rounded-xl text-xs font-bold text-gray-700 transition-all cursor-pointer"
                       >
                         <Edit3 size={13} />
                         수정
@@ -492,13 +551,39 @@ export default function InventoryManagement() {
                 <label className="block text-[11px] font-bold text-gray-700 mb-1">
                   재고수량
                 </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={editStock}
-                  onChange={(e) => setEditStock(Number(e.target.value))}
-                  className="w-full px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-900 focus:outline-none"
-                />
+                <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={editStockInput}
+                    onChange={(e) => handleEditStockInputChange(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    onBlur={() => {
+                      if (editStockInput.trim() === "") {
+                        syncEditStockValue(0);
+                      }
+                    }}
+                    className="w-full bg-transparent px-3 py-1.5 text-xs font-bold text-gray-900 focus:outline-none"
+                  />
+                  <div className="flex w-10 shrink-0 flex-col border-l border-gray-200 bg-white">
+                    <button
+                      type="button"
+                      onClick={() => syncEditStockValue(editStock + 1)}
+                      className="flex flex-1 items-center justify-center text-gray-500 transition-colors hover:bg-gray-50 hover:text-[#143617]"
+                      aria-label="재고 1 증가"
+                    >
+                      <ChevronUp size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => syncEditStockValue(editStock - 1)}
+                      className="flex flex-1 items-center justify-center border-t border-gray-200 text-gray-500 transition-colors hover:bg-gray-50 hover:text-[#143617]"
+                      aria-label="재고 1 감소"
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 

@@ -51,6 +51,7 @@ export function LegalInfoSection({
   return (
     <Section
       title="3. 식품 법정 고시정보"
+      id="product-section-legal"
       collapsible
       isOpen={isOpen}
       onToggle={onToggle}

@@ -38,7 +38,6 @@ export default function NoticeModal({ isOpen, onClose }: NoticeModalProps) {
         {/* Header Section */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-50">
           <div className="flex items-center gap-2 text-[#143617]">
-            {/* <Info size={20} /> */}
             <h2 className="text-[16px] font-black tracking-tight">
               시스템 안내
             </h2>
@@ -56,25 +55,16 @@ export default function NoticeModal({ isOpen, onClose }: NoticeModalProps) {
           <div className="flex flex-col text-center items-center gap-3 p-4 bg-amber-50 rounded-[12px] border border-amber-100">
             <AlertCircle className="text-amber-600" size={18} />
             <p className="text-[14px] text-amber-900 leading-relaxed">
-              현재 대시보드에 표시된 지표들은{" "}
+              현재 대시보드의{" "}
+              <strong>리뷰 현황 및 인플루언서 캠페인 현황</strong> 지표는{" "}
               <strong>테스트용 목(Mock) 데이터</strong>입니다. 실제 데이터와는
               차이가 있을 수 있습니다.
             </p>
           </div>
 
-          <div className="text-[14px] text-gray-600 leading-relaxed">
-            <p className="mb-2 font-semibold text-gray-800">
-              현재 연동된 실제 기능:
-            </p>
-            <ul className="list-disc list-inside space-y-1 text-gray-500">
-              <li>상품 관리 리스트 조회</li>
-              <li>상품 등록 API</li>
-            </ul>
-          </div>
-
-          <p className="text-[13px] text-gray-400">
-            나머지 기능들도 순차적으로 연동 중에 있습니다. 원활한 이용을 위해
-            참고 부탁드립니다.
+          <p className="text-[14px] text-gray-600 leading-relaxed">
+            해당 항목을 제외한 나머지 기능들은 모두 정상적으로 실제 연동되어
+            있습니다. 이용에 참고 부탁드립니다.
           </p>
         </div>
 

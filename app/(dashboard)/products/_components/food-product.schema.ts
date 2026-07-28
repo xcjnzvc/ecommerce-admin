@@ -6,11 +6,44 @@ import { z } from "zod";
 // ────────────────────────────────────────────────
 
 const optionSchema = z.object({
-  name: z.string().min(1, "옵션명을 입력하세요"),
-  value: z.string().min(1, "옵션값을 입력하세요"),
+  name: z.string(),
+  value: z.string(),
   extraPrice: z.coerce.number().min(0).default(0),
   stock: z.coerce.number().min(0, "재고는 0 이상이어야 합니다"),
 });
+
+const filledOptionSchema = optionSchema.superRefine((option, ctx) => {
+  const hasContent =
+    option.name.trim().length > 0 || option.value.trim().length > 0;
+
+  if (!hasContent) return;
+
+  if (!option.name.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "옵션명을 입력하세요",
+      path: ["name"],
+    });
+  }
+
+  if (!option.value.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "옵션값을 입력하세요",
+      path: ["value"],
+    });
+  }
+});
+
+function filterEmptyOptions(
+  options: z.input<typeof optionSchema>[] | undefined,
+) {
+  if (!Array.isArray(options)) return [];
+
+  return options.filter(
+    (option) => option.name?.trim() || option.value?.trim(),
+  );
+}
 
 const nutritionSchema = z.object({
   calories: z.coerce.number().min(0, "열량을 입력하세요"),
@@ -70,21 +103,40 @@ const foodLegalInfoSchema = z.object({
   importInfo: importInfoSchema.optional(),
 });
 
+const foodLegalInfoDraftSchema = z.object({
+  foodType: z.string().optional().default(""),
+  ingredients: z.string().optional().default(""),
+  netWeight: z.string().optional().default(""),
+  expiryDate: z.string().optional().default(""),
+  storageMethod: z.string().optional().default(""),
+  manufacturer: z.string().optional().default(""),
+  consumerServicePhone: z.string().optional().default(""),
+
+  allergens: z.array(z.string()).default([]),
+  isGMO: z.enum(["해당없음", "유전자재조합식품"]).default("해당없음"),
+
+  nutritionRequired: z.boolean().default(false),
+  nutrition: nutritionSchema.optional(),
+
+  isImported: z.boolean().default(false),
+  importInfo: importInfoSchema.optional(),
+});
+
 // ────────────────────────────────────────────────
 // 4. 채널별 정보
 // ────────────────────────────────────────────────
 
 const shopifyDataSchema = z.object({
-  productType: z.string().min(1, "상품 유형(Product type)을 입력하세요"),
-  vendor: z.string().min(1, "판매자/브랜드명(Vendor)을 입력하세요"),
-  tags: z.string().optional().default(""), // 콤마로 구분된 태그
+  productType: z.string().optional().default(""),
+  vendor: z.string().optional().default(""),
+  tags: z.string().optional().default(""),
   publishStatus: z.enum(["active", "draft"]).default("draft"),
 });
 
 const cafe24DataSchema = z.object({
   displayStatus: z.enum(["진열함", "진열안함"]).default("진열함"),
   sellingStatus: z.enum(["판매함", "판매안함"]).default("판매함"),
-  shippingPolicy: z.string().min(1, "배송 정책을 입력하세요"),
+  shippingPolicy: z.string().optional().default(""),
 });
 
 // ────────────────────────────────────────────────
@@ -172,11 +224,9 @@ const cafe24DataSchema = z.object({
 const foodProductBaseSchema = z.object({
   name: z.string().min(1, "상품명을 입력하세요"),
 
-  categoryNos: z
-    .array(z.coerce.number())
-    .min(1, "상품이 노출될 분류를 최소 1개 선택하세요"),
+  categoryNos: z.array(z.coerce.number()).default([]),
 
-  price: z.coerce.number().min(0, "판매가를 입력하세요"),
+  price: z.coerce.number().min(1, "판매가를 입력하세요"),
 
   cost: z.coerce.number().min(0).default(0),
 
@@ -184,7 +234,7 @@ const foodProductBaseSchema = z.object({
 
   images: z.array(z.string()).default([]),
 
-  options: z.array(optionSchema).default([]),
+  options: z.array(filledOptionSchema).default([]),
 
   legalInfo: foodLegalInfoSchema,
 
@@ -201,27 +251,22 @@ const foodProductBaseSchema = z.object({
   status: z.enum(["임시저장", "판매중"]).default("임시저장"),
 });
 
-const superRefineShared = (
-  data: z.infer<typeof foodProductBaseSchema>,
+const foodProductDraftBaseSchema = foodProductBaseSchema.extend({
+  price: z.coerce.number().min(0, "판매가는 0 이상이어야 합니다"),
+  legalInfo: foodLegalInfoDraftSchema,
+});
+
+const superRefineChannels = (
+  data: {
+    channels: { shopify: boolean; cafe24: boolean };
+    channelData: {
+      shopify?: z.infer<typeof shopifyDataSchema>;
+      cafe24?: z.infer<typeof cafe24DataSchema>;
+    };
+    categoryNos: number[];
+  },
   ctx: z.RefinementCtx,
 ) => {
-  if (data.legalInfo.nutritionRequired && !data.legalInfo.nutrition) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "영양성분 표시대상인 경우 영양성분을 입력해야 합니다",
-      path: ["legalInfo", "nutrition"],
-    });
-  }
-
-  if (data.legalInfo.isImported && !data.legalInfo.importInfo) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message:
-        "수입식품인 경우 수입업소/제조업소/수출국 정보를 입력해야 합니다",
-      path: ["legalInfo", "importInfo"],
-    });
-  }
-
   if (!data.channels.shopify && !data.channels.cafe24) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -245,6 +290,45 @@ const superRefineShared = (
       path: ["channelData", "cafe24"],
     });
   }
+
+  if (data.channels.cafe24 && data.categoryNos.length < 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "카페24 등록 시 분류를 최소 1개 선택하세요",
+      path: ["categoryNos"],
+    });
+  }
+};
+
+const superRefineShared = (
+  data: z.infer<typeof foodProductBaseSchema>,
+  ctx: z.RefinementCtx,
+) => {
+  if (data.legalInfo.nutritionRequired && !data.legalInfo.nutrition) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "영양성분 표시대상인 경우 영양성분을 입력해야 합니다",
+      path: ["legalInfo", "nutrition"],
+    });
+  }
+
+  if (data.legalInfo.isImported && !data.legalInfo.importInfo) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "수입식품인 경우 수입업소/제조업소/수출국 정보를 입력해야 합니다",
+      path: ["legalInfo", "importInfo"],
+    });
+  }
+
+  superRefineChannels(data, ctx);
+};
+
+const superRefineDraft = (
+  data: z.infer<typeof foodProductDraftBaseSchema>,
+  ctx: z.RefinementCtx,
+) => {
+  superRefineChannels(data, ctx);
 };
 
 // 상품 등록
@@ -254,9 +338,27 @@ export const foodProductCreateSchema = foodProductBaseSchema
   })
   .superRefine(superRefineShared);
 
+export const foodProductDraftCreateSchema = foodProductDraftBaseSchema
+  .extend({
+    stock: z.coerce.number().min(0, "초기 재고수량을 입력하세요"),
+  })
+  .superRefine(superRefineDraft);
+
 // 상품 수정
 export const foodProductEditSchema =
   foodProductBaseSchema.superRefine(superRefineShared);
+
+export const foodProductDraftEditSchema =
+  foodProductDraftBaseSchema.superRefine(superRefineDraft);
+
+export function sanitizeProductOptions<
+  T extends { options?: z.input<typeof optionSchema>[] },
+>(data: T): T {
+  return {
+    ...data,
+    options: filterEmptyOptions(data.options),
+  };
+}
 
 // export type FoodProductFormInput = z.input<typeof foodProductSchema>;
 // export type FoodProductFormValues = z.output<typeof foodProductSchema>;

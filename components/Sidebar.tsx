@@ -8,14 +8,15 @@ import {
   Package,
   ShoppingCart,
   Warehouse,
-  Star,
-  Megaphone,
-  Settings,
   LogOut,
   User as UserIcon,
   ChevronUp,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+
+interface SidebarProps {
+  initialUserEmail?: string | null;
+}
 
 const menus = [
   { label: "대시보드", href: "/dashboard", icon: LayoutDashboard },
@@ -27,28 +28,37 @@ const menus = [
   // { label: "설정", href: "/settings", icon: Settings },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ initialUserEmail = null }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(initialUserEmail);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
 
   // 사용자 정보 가져오기 및 외부 클릭 감지 설정
   useEffect(() => {
-    const fetchUser = async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    const supabase = createClient();
 
-      if (user) {
-        setUserEmail(user.email ?? null);
-      }
+    const fetchUser = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      setUserEmail(session?.user.email ?? initialUserEmail);
     };
+
     fetchUser();
-  }, []);
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserEmail(session?.user.email ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [initialUserEmail]);
 
   // 로그아웃 로직
   const handleLogout = async () => {

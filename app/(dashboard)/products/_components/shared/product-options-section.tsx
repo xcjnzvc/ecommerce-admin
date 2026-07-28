@@ -13,6 +13,13 @@ interface ProductOptionsSectionProps {
   remove: UseFieldArrayRemove;
   isOpen: boolean;
   onToggle: () => void;
+  errors?: {
+    options?: Array<{
+      name?: { message?: string };
+      value?: { message?: string };
+      stock?: { message?: string };
+    }> | { message?: string };
+  };
 }
 
 export function ProductOptionsSection({
@@ -22,27 +29,40 @@ export function ProductOptionsSection({
   remove,
   isOpen,
   onToggle,
+  errors,
 }: ProductOptionsSectionProps) {
   return (
     <Section
       title="2. 옵션"
+      id="product-section-options"
       collapsible
       isOpen={isOpen}
       onToggle={onToggle}
     >
       <div className="space-y-3">
-        {fields.map((field, index) => (
+        {fields.map((field, index) => {
+          const optionErrors = Array.isArray(errors?.options)
+            ? errors.options[index]
+            : undefined;
+
+          return (
           <div
             key={field.id}
             className="grid grid-cols-5 gap-2 items-end bg-slate-50 p-3 rounded-lg border"
           >
-            <FormField label="옵션명">
+            <FormField
+              label="옵션명"
+              error={optionErrors?.name?.message}
+            >
               <input
                 className="input"
                 {...register(`options.${index}.name` as const)}
               />
             </FormField>
-            <FormField label="옵션값">
+            <FormField
+              label="옵션값"
+              error={optionErrors?.value?.message}
+            >
               <input
                 className="input"
                 {...register(`options.${index}.value` as const)}
@@ -55,7 +75,10 @@ export function ProductOptionsSection({
                 {...register(`options.${index}.extraPrice` as const)}
               />
             </FormField>
-            <FormField label="재고">
+            <FormField
+              label="재고"
+              error={optionErrors?.stock?.message}
+            >
               <input
                 type="number"
                 className="input"
@@ -70,7 +93,8 @@ export function ProductOptionsSection({
               삭제
             </button>
           </div>
-        ))}
+          );
+        })}
 
         <button
           type="button"

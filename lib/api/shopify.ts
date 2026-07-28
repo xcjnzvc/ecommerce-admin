@@ -1,6 +1,6 @@
-import axios from "axios";
 import { shopifyApi } from "../axios-instances";
 import type { ShopifyOrderListItem } from "@/types/shopify";
+import { logAxiosError } from "./errors";
 
 const BASE = `https://${process.env.SHOPIFY_SHOP}/admin/api/2026-07`;
 
@@ -66,13 +66,7 @@ export const shopify = {
 
       return res.data;
     } catch (err) {
-      if (axios.isAxiosError(err)) {
-        console.error("🔍 Shopify 삭제 실패 응답:", {
-          status: err.response?.status,
-          data: err.response?.data, // 여기에 Shopify가 보낸 실제 에러 메시지가 있음
-          headers: err.response?.headers,
-        });
-      }
+      logAxiosError("shopify", "deleteProduct", err, { productId });
       throw err; // 상위 라우트에서 처리하도록 다시 던짐
     }
   },

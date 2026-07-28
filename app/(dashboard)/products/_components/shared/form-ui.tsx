@@ -9,6 +9,7 @@ interface SectionProps {
   collapsible?: boolean;
   isOpen?: boolean;
   onToggle?: () => void;
+  id?: string;
 }
 
 export function Section({
@@ -17,9 +18,13 @@ export function Section({
   collapsible = false,
   isOpen = true,
   onToggle,
+  id,
 }: SectionProps) {
   return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+    <div
+      id={id}
+      className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm scroll-mt-8"
+    >
       <div
         className={`flex justify-between items-center ${collapsible ? "cursor-pointer" : ""}`}
         onClick={onToggle}

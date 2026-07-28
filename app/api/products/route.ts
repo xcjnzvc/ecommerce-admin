@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
             : uploadResult.replace(/^https?:\/\/[^/]+/, "");
         }
       } catch (uploadError) {
+        // 상품 생성 자체는 계속 진행하고, 대표 이미지만 best-effort로 반영한다.
         console.error("이미지 업로드 실패:", uploadError);
       }
     }
@@ -106,6 +107,7 @@ export async function POST(req: NextRequest) {
 
         console.log("재고관리 활성화 완료:", productNo);
       } catch (stockError) {
+        // 재고 설정 실패가 있더라도 생성된 상품 식별자는 유지해 후속 복구가 가능하도록 둔다.
         console.error("재고관리 활성화 실패:", stockError);
       }
     }
@@ -126,6 +128,7 @@ export async function POST(req: NextRequest) {
         try {
           await cafe24.assignCategory(productNo, categoryNo);
         } catch (categoryError) {
+          // 카테고리는 부분 성공을 허용하고, 실패한 항목만 로그로 남긴다.
           console.error(`카테고리(${categoryNo}) 배정 실패:`, categoryError);
         }
       }

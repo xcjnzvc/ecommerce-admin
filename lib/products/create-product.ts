@@ -17,8 +17,12 @@ export async function createProduct(
   submitStatus: "임시저장" | "판매중" = "판매중",
 ): Promise<CreateProductResult> {
   const supabase = createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   const fullDescription = buildFullDescription(data.description, data.legalInfo);
   const finalStatus = submitStatus ?? data.status ?? "판매중";
+  const modifierEmail = session?.user.email ?? null;
 
   const payload = {
     name: data.name,
@@ -91,7 +95,10 @@ export async function createProduct(
       await fetch(`/api/products/${insertedRowId}/stock`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stock: data.stock }),
+        body: JSON.stringify({
+          stock: data.stock,
+          modifier: modifierEmail,
+        }),
       });
     }
   }

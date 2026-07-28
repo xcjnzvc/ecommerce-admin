@@ -1,6 +1,7 @@
-import axios, { AxiosError } from "axios";
+import axios from "axios";
 import { cafe24Api } from "../axios-instances";
 import { createClient } from "@supabase/supabase-js";
+import { logAxiosError } from "./errors";
 
 // 타입 정의 추가
 export interface ProductImageInput {
@@ -266,7 +267,7 @@ export const cafe24 = {
       const res = await cafe24Api.post(url, payloadWithCacheBuster);
 
       // 👇 이 부분 추가
-      const check = await cafe24Api.get(
+      await cafe24Api.get(
         `https://${data.mall_id}.cafe24api.com/api/v2/admin/products/${productNo}`,
         {
           params: {
@@ -277,11 +278,7 @@ export const cafe24 = {
 
       return res.data;
     } catch (error: unknown) {
-      const err = error as AxiosError;
-      console.error(
-        "[카페24 이미지 전송 에러]:",
-        err.response?.data || (err as Error).message,
-      );
+      logAxiosError("cafe24", "updateProductImages", error, { productNo });
       throw error;
     }
   },
@@ -304,7 +301,7 @@ export const cafe24 = {
 
     // 빈 값 제거
     const cleanedFields = Object.fromEntries(
-      Object.entries(fields).filter(([_, value]) => {
+      Object.entries(fields).filter(([, value]) => {
         return value !== "" && value !== null && value !== undefined;
       }),
     );
@@ -317,14 +314,7 @@ export const cafe24 = {
 
       return res.data;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        console.error(
-          "===== 카페24 수정 실패 =====",
-          error.response?.status,
-          JSON.stringify(error.response?.data, null, 2),
-        );
-      }
-
+      logAxiosError("cafe24", "updateProduct", error, { productNo });
       throw error;
     }
   },
@@ -422,15 +412,7 @@ export const cafe24 = {
       });
       return res.data.orders ?? [];
     } catch (err) {
-      if (axios.isAxiosError(err)) {
-        console.error(
-          `[${params.dateType}] 카페24 주문 조회 실패:`,
-          err.response?.status,
-          JSON.stringify(err.response?.data),
-        );
-      } else {
-        console.error(`[${params.dateType}] 알 수 없는 오류:`, err);
-      }
+      logAxiosError("cafe24", "getOrders", err, { dateType: params.dateType });
       throw err;
     }
   },
@@ -457,6 +439,9 @@ export const cafe24 = {
   getProductDetail: async (
     productNo: number,
   ): Promise<Cafe24ProductDetail | null> => {
+    // 이 함수는 재고 동기화 배치가 개별 상품 실패로 전체 동기화를 중단하지 않도록
+    // "variant 없음"과 "카페24 조회 실패"를 모두 null로 돌려준다.
+    // 호출부는 null을 "재시도/로그 대상"으로만 취급하고 두 경우를 구분하지 않는다.
     console.log("★★★★★ getProductDetail 호출", productNo);
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -477,7 +462,7 @@ export const cafe24 = {
     const variantCode = res.data.variants?.[0]?.variant_code;
 
     if (variantCode) {
-      const inventoryRes = await cafe24Api.get(
+      await cafe24Api.get(
         `https://${data.mall_id}.cafe24api.com/api/v2/admin/products/${productNo}/variants/${variantCode}/inventories`,
       );
     }
