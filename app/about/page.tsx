@@ -178,7 +178,8 @@ const troubleshooting = [
     label: "동기화 실패 로그가 해결 후에도 남는 문제",
     problem:
       "실패는 sync_error_log에 남기지만, 이후 동기화가 성공해도 화면의 오류 상태가 자동으로 풀리지 않을 수 있었습니다.",
-    cause: "실패 기록 로직만 있고, 성공 시 과거 실패를 resolved 처리하는 로직이 없었습니다.",
+    cause:
+      "실패 기록 로직만 있고, 성공 시 과거 실패를 resolved 처리하는 로직이 없었습니다.",
     fix: "동기화 성공 분기에서 해당 상품의 미해결 로그를 찾아 자동 resolved 처리하도록 추가했습니다.",
   },
   {
@@ -263,20 +264,20 @@ export default function AboutPage() {
         </h1>
         <p className="text-gray-600 text-base leading-relaxed max-w-2xl mb-8">
           Cafe24와 Shopify API를 각각 독립적인 연동 계층으로 분리하고,{" "}
-          <code className="text-gray-500 text-sm">products.stock</code>을
-          재고의 Single Source of Truth(SSOT)로 둡니다. 쿠팡·스마트스토어는
-          사업자 등록이 필요해 아직 연동하지 않았고, 테스트 진입이 자유로운
-          Shopify로 멀티채널 구조를 먼저 검증했습니다.
+          <code className="text-gray-500 text-sm">products.stock</code>을 재고의
+          Single Source of Truth(SSOT)로 둡니다. 쿠팡·스마트스토어는 사업자
+          등록이 필요해 아직 연동하지 않았고, 테스트 진입이 자유로운 Shopify로
+          멀티채널 구조를 먼저 검증했습니다.
         </p>
         <div className="flex flex-wrap gap-3 mb-10">
-          <a
+          {/* <a
             href={DEPLOY_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 text-sm font-medium border border-gray-200 rounded-lg px-4 py-2 hover:bg-gray-50 transition"
           >
             Live Demo →
-          </a>
+          </a> */}
           <a
             href={GITHUB_URL}
             target="_blank"
@@ -377,7 +378,9 @@ export default function AboutPage() {
               key={item.title}
               className="border border-gray-100 rounded-xl px-4 py-4"
             >
-              <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+              <p className="text-sm font-semibold text-gray-900">
+                {item.title}
+              </p>
               <p className="text-xs text-gray-500 mt-1 leading-relaxed">
                 {item.desc}
               </p>
@@ -446,9 +449,9 @@ export default function AboutPage() {
         </div>
         <p className="text-xs text-gray-400 leading-relaxed mb-10">
           API Route는 숫자보다 도메인 분리가 중요합니다. products / inventory /
-          orders / auth 기준으로 나누고, 채널 호출은 lib/api 어댑터에만
-          둡니다. 도메인 테이블 6개 · 배포 Cron 1개(재고) · 외부 채널 2개.
-          주문은 Shopify 웹훅, Cafe24는 수동 동기화입니다.
+          orders / auth 기준으로 나누고, 채널 호출은 lib/api 어댑터에만 둡니다.
+          도메인 테이블 6개 · 배포 Cron 1개(재고) · 외부 채널 2개. 주문은
+          Shopify 웹훅, Cafe24는 수동 동기화입니다.
         </p>
 
         <div className="mb-10">
@@ -580,19 +583,16 @@ export default function AboutPage() {
             </ul>
           </div>
           <div className="border border-gray-100 rounded-xl px-5 py-5">
-            <p className="text-[10px] font-semibold text-gray-400 mb-3">
-              확장
-            </p>
+            <p className="text-[10px] font-semibold text-gray-400 mb-3">확장</p>
             <ul className="flex flex-col gap-2 text-sm text-gray-600">
-              {[
-                "Cafe24 주문 웹훅",
-                "쿠팡 / 스마트스토어 (사업자 등록 후)",
-              ].map((text) => (
-                <li key={text} className="flex gap-2">
-                  <span className="text-gray-300">•</span>
-                  <span>{text}</span>
-                </li>
-              ))}
+              {["Cafe24 주문 웹훅", "쿠팡 / 스마트스토어 (사업자 등록 후)"].map(
+                (text) => (
+                  <li key={text} className="flex gap-2">
+                    <span className="text-gray-300">•</span>
+                    <span>{text}</span>
+                  </li>
+                ),
+              )}
             </ul>
           </div>
         </div>
@@ -666,14 +666,14 @@ export default function AboutPage() {
       </section>
 
       <section className="flex flex-wrap gap-3">
-        <a
+        {/* <a
           href={DEPLOY_URL}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 text-sm font-medium border border-gray-200 rounded-lg px-4 py-2 hover:bg-gray-50 transition"
         >
           Live Demo →
-        </a>
+        </a> */}
         <a
           href={GITHUB_URL}
           target="_blank"
