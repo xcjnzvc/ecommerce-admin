@@ -31,10 +31,7 @@ export function ChannelInfoSection({
   onChannelToggle,
 }: ChannelInfoSectionProps) {
   return (
-    <Section
-      title="4. 채널 선택 및 정보"
-      id="product-section-channels"
-    >
+    <Section title="4. 채널 선택 및 정보" id="product-section-channels">
       {errors.channels && (
         <p className="text-xs text-red-600 -mt-2">
           {errors.channels.message as string}
@@ -79,7 +76,7 @@ export function ChannelInfoSection({
             >
               <input
                 className="input"
-                placeholder="예: 가꾸기"
+                placeholder="예: 브랜드명"
                 {...register("channelData.shopify.vendor")}
               />
             </FormField>
@@ -108,7 +105,9 @@ export function ChannelInfoSection({
 
       {cafe24Checked && (
         <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100 text-sm">
-          <p className="font-semibold text-emerald-900 mb-3">카페24 전용 정보</p>
+          <p className="font-semibold text-emerald-900 mb-3">
+            카페24 전용 정보
+          </p>
           <div className="grid grid-cols-2 gap-4">
             <FormField
               label="배송 정책"

@@ -1,103 +1,180 @@
-# 멀티채널 이커머스 관리자 대시보드
+# Commerce Admin
 
-카페24와 Shopify에 상품을 각각 등록해야 하는 반복 업무를 줄이기 위해 만든
-통합 어드민입니다. 하나의 폼에서 상품을 등록하면 두 채널에 동시 반영되고,
-재고는 카페24를 기준으로 매일 자동 동기화됩니다.
+(멀티채널 이커머스 관리자 대시보드)
 
-프로젝트 배경과 설계 판단은 [/about](이 배포 URL/about) 페이지에 정리했습니다.
+Cafe24와 Shopify를 하나의 관리자에서 다루는 멀티채널 이커머스 운영 시스템입니다.
+
+운영자가 상품 등록·수정, 재고 관리, 채널 동기화, 주문 현황을 채널별로 나눠 들어가지 않고 처리할 수 있도록 만들었습니다.
+
+배포: [https://ecommerce-admin-six-blush.vercel.app](https://ecommerce-admin-six-blush.vercel.app)
 
 ---
 
-## 실제로 구현한 기능
+## Why
+
+실제 이커머스 운영에서는 이런 일이 반복됩니다.
+
+- 같은 상품을 Cafe24와 Shopify에 각각 등록해야 함
+- 재고를 채널마다 따로 맞추다 보면 쉽게 불일치함
+- 수정·품절·동기화 실패를 한곳에서 추적하기 어려움
+
+이 반복 업무와 정합성 문제를 줄이기 위해, 내부 DB를 기준으로 두고 채널 API를 어댑터로 붙이는 통합 어드민을 만들었습니다.
+
+---
+
+## Documentation
+
+프로젝트를 만들게 된 배경, 설계 판단, 트러블슈팅은 About 페이지에 정리했습니다.
+
+👉 [About Page](https://ecommerce-admin-six-blush.vercel.app/about)
+
+---
+
+## Tech Stack
+
+| 구분     | 기술                                                 | 역할                                  |
+| -------- | ---------------------------------------------------- | ------------------------------------- |
+| Frontend | Next.js (App Router), React, TypeScript, TailwindCSS | 관리자 UI                             |
+| Backend  | Next.js API Routes                                   | 인증, 상품/재고/주문 API, Cron        |
+| Database | Supabase (PostgreSQL), RLS                           | 상품·주문·동기화 상태 저장            |
+| Auth     | Supabase Auth, Cafe24 OAuth                          | 관리자 로그인, Cafe24 토큰 관리       |
+| State    | TanStack React Query                                 | 서버 상태 캐시, Realtime invalidation |
+| Form     | react-hook-form, zod                                 | 상품 등록/수정 검증                   |
+| External | Cafe24 Admin API, Shopify Admin API                  | 채널 상품·재고·주문 연동              |
+| Deploy   | Vercel (Cron Jobs 포함)                              | 배포 및 재고 동기화 스케줄            |
+
+---
+
+## Features
 
 ### 상품 관리
 
-- 식품 카테고리 전용 등록 폼 (법정 고시정보, 옵션, 채널별 정보 한 화면 입력)
-- 등록 시 Supabase 저장 → 카페24 등록 → Shopify 등록 순차 처리, 각 채널 상품번호를 다시 Supabase에 기록
-- 등록(create)과 수정(edit) 플로우를 별도 컴포넌트로 분리, 공용 섹션/훅으로 중복 제거
-- 카페24 OAuth 토큰 자동 갱신 (동시 요청 시 중복 갱신 방지 처리)
+- 상품 등록 / 수정 / 삭제
+- 식품 카테고리 전용 등록 폼
+- Cafe24 · Shopify 순차 등록
+- OAuth 토큰 자동 갱신
 
 ### 재고 관리
 
-- `products.stock`을 재고의 단일 소스로 채택 (초기엔 별도 inventory 테이블을 시도했으나, 이미 운영 중이던 동기화 로직과의 정합성을 위해 통일)
-- 매일 1회 크론으로 카페24 실재고를 조회해 Supabase → Shopify 순으로 미러링 (`/api/cron/sync-inventory`, Vercel Cron + CRON_SECRET 인증)
-- 관리자가 수동으로 재고를 조정하면 카페24·Shopify에 동시 반영 (`/api/products/[id]/stock`)
-- 재고 변경 이력을 DB에 영속화 (`inventory_logs`)
-- 동기화 실패 이력을 추적하고, 다음 동기화 성공 시 자동으로 해결 처리 (`sync_error_log` + resolved 플래그)
+- Cafe24 → Supabase → Shopify 자동 동기화
+- 관리자 수동 재고 조정
+- 동기화 로그 및 실패 추적
+
+### 주문 관리
+
+- Shopify 웹훅 기반 주문 수집
+- Cafe24 주문 동기화
+
+### 대시보드
+
+- 매출
+- 주문 현황
+- 베스트셀러
 
 ---
 
-## 기술 스택
+## Architecture
 
-| 구분      | 기술                                          |
-| --------- | --------------------------------------------- |
-| Frontend  | Next.js (App Router), TypeScript, TailwindCSS |
-| Backend   | Next.js API Routes                            |
-| Database  | Supabase (PostgreSQL), RLS                    |
-| 인증      | Supabase Auth, 카페24 OAuth                   |
-| 외부 연동 | 카페24 Admin API, Shopify Admin API           |
-| 배포      | Vercel (Cron Jobs 포함)                       |
-| 폼/검증   | react-hook-form, zod                          |
+```text
+Admin UI (Next.js)
+        │
+        ▼
+API Routes (app/api)
+        │
+        ▼
+Service Layer (lib/products, lib/inventory, lib/orders)
+        │
+        ├──► Supabase (products.stock 기준)
+        │
+        ├──► Cafe24 Admin API
+        │
+        └──► Shopify Admin API
+```
+
+### 상품 등록 흐름
+
+```text
+폼 제출
+  → Supabase products insert
+  → Cafe24 상품 생성 (+ 필요 시 이미지 업로드)
+  → Shopify 상품 생성
+  → cafe24_product_no / shopify_product_id 등 채널 번호 저장
+```
+
+### 재고 동기화 흐름
+
+```text
+Cron (/api/cron/sync-inventory)
+  → Cafe24 실재고 조회
+  → products.stock 갱신
+  → Shopify inventory 반영
+  → 실패 시 sync_error_log 기록 / 성공 시 resolved
+```
+
+초기에는 별도 inventory 테이블을 두었으나, 운영 중이던 동기화 로직과 정합성이 깨져 `products.stock`으로 통합했습니다. 재고는 이중 저장하지 않는 것이 이 프로젝트의 핵심 원칙입니다.
 
 ---
 
-## 에러 처리 원칙
+## Getting Started
 
-- `lib/api`는 외부 API 호출 어댑터로 유지하고, 기본 동작은 에러를 복구하지 않고 그대로 `throw` 하는 것입니다.
-- `app/api`와 동기화 레이어는 이 에러를 HTTP 응답, `sync_error_log`, partial failure 정책으로 변환합니다.
-- `null` 또는 기본값 반환은 예외적인 계약이므로 타입이나 주석으로 반드시 의미를 명시합니다.
-- 공통 로깅 헬퍼는 에러를 삼키지 않으며, `logAxiosError(...); throw error;` 패턴으로 호출부의 제어 흐름을 유지합니다.
-
----
-
-## 로컬 실행 방법
-
-\`\`\`bash
+```bash
+git clone <repo-url>
+cd ecommerce-admin
 npm install
-cp .env.example .env.local
+# .env.local 생성 후 아래 환경변수 채우기
 npm run dev
-\`\`\`
+```
 
-### 필요한 환경변수
+### 환경변수
 
-\`\`\`
+```env
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+
 CAFE24_CLIENT_ID=
 CAFE24_CLIENT_SECRET=
+
 SHOPIFY_SHOP=
 SHOPIFY_CLIENT_ID=
 SHOPIFY_CLIENT_SECRET=
 SHOPIFY_LOCATION_ID=
 SHOPIFY_ACCESS_TOKEN=
-SHOPIFY_APP_URL=          # 배포 URL (웹훅 등록용, 예: https://your-app.vercel.app)
+SHOPIFY_APP_URL=          # 예: https://your-app.vercel.app
+
 CRON_SECRET=
-\`\`\`
+```
 
-### Shopify 주문 웹훅 (실시간 주문 반영)
-
-주문은 **15분 cron 폴링을 사용하지 않습니다.** Shopify 웹훅 → `orders` 테이블 → Realtime으로 대시보드가 갱신됩니다.
-
-1. 배포 후 로그인 상태에서 `POST /api/shopify/webhooks/register` 호출 (또는 Shopify Admin에서 수동 등록)
-2. 웹훅 URL: `https://<your-domain>/api/webhooks/shopify/orders`
-3. 토픽: `orders/create`, `orders/updated`, `orders/cancelled`
-4. HMAC 검증: `SHOPIFY_CLIENT_SECRET` (또는 `SHOPIFY_WEBHOOK_SECRET`)
-
-카페24 주문은 **주문 관리 → 동기화** 버튼으로 수동 백필합니다 (카페24 웹훅은 추후).
+실제 키 값은 커밋하지 않습니다.
 
 ---
 
-## 다음 단계로 고려 중인 것
+## Project Structure
 
-- 카페24 주문 웹훅
-- 스마트스토어/쿠팡 등 채널 확장 (어댑터 구조로 설계, `lib/api/` 아래 서비스 레이어 추가만으로 확장 가능하도록 구성)
+```text
+app/
+ ├ (auth)/              # 로그인·회원가입
+ ├ (dashboard)/
+ │   ├ dashboard/       # 운영 대시보드
+ │   ├ products/
+ │   │   ├ new/         # 상품 등록
+ │   │   └ [id]/edit/  # 상품 수정
+ │   ├ inventory/       # 재고 관리
+ │   ├ orders/          # 주문 관리
+ │   └ settings/
+ ├ api/                 # API Routes (products, inventory, orders, cron, webhooks)
+ └ about/               # 설계·배경 설명 페이지
 
----
+lib/
+ ├ api/                 # Cafe24 / Shopify 어댑터
+ ├ products/            # 상품 등록·수정 오케스트레이션
+ ├ inventory/           # 재고 동기화
+ ├ orders/              # 주문 동기화
+ ├ dashboard/           # 대시보드 집계
+ └ supabase/            # 클라이언트·동기화 상태
 
-## AI 도구 활용
+components/             # 공용 UI
+types/                  # 공유 타입
+```
 
-Claude와 함께 설계 논의부터 디버깅까지 진행했습니다. 특히 재고 데이터가
-두 곳(별도 inventory 테이블, products.stock)에 나뉘어 저장되며 발생한
-정합성 문제를 진단하고, 단일 소스로 통합하는 리팩토링 과정에서 실질적인
-도움을 받았습니다.
+채널별 외부 호출은 `lib/api/`에만 두고, `app/api`와 `lib/*` 서비스 레이어에서 오케스트레이션합니다. 새 채널은 기존 채널 코드를 건드리지 않고 어댑터·서비스 추가 쪽으로 확장하는 구조입니다.

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cafe24, imageUrlToBase64, type ProductInput } from "@/lib/api/cafe24";
 import { shopify } from "@/lib/api/shopify";
 import { createClient } from "@supabase/supabase-js";
+import { logSyncError } from "@/lib/supabase/sync-state";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -124,6 +125,14 @@ export async function DELETE(
         await cafe24.deleteProduct(row.cafe24_product_no);
       } catch (cafe24Error) {
         console.warn("카페24 상품 삭제 실패:", cafe24Error);
+        await logSyncError({
+          productNo: row.cafe24_product_no,
+          errorMessage: `Cafe24 상품 삭제 실패: ${
+            cafe24Error instanceof Error
+              ? cafe24Error.message
+              : String(cafe24Error)
+          }`,
+        });
       }
     }
     if (row?.shopify_product_id) {
@@ -132,6 +141,14 @@ export async function DELETE(
         await shopify.deleteProduct(row.shopify_product_id);
       } catch (shopifyError) {
         console.warn("Shopify 상품 삭제 실패:", shopifyError);
+        await logSyncError({
+          productNo: row.cafe24_product_no ?? undefined,
+          errorMessage: `Shopify 상품 삭제 실패 (shopify_product_id=${row.shopify_product_id}): ${
+            shopifyError instanceof Error
+              ? shopifyError.message
+              : String(shopifyError)
+          }`,
+        });
       }
     }
 
