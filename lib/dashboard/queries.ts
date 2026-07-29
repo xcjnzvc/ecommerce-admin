@@ -1,7 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { BestSellerItem } from "@/lib/dashboard/best-sellers";
+import type {
+  BestSellerItem,
+  BestSellerSort,
+} from "@/lib/dashboard/best-sellers";
 import type { DashboardSummary } from "@/types/dashboard";
 import { queryKeys } from "@/lib/react-query/query-keys";
 
@@ -13,8 +16,12 @@ async function fetchDashboardSummary(): Promise<DashboardSummary> {
   return (await res.json()) as DashboardSummary;
 }
 
-async function fetchBestSellers(): Promise<BestSellerItem[]> {
-  const res = await fetch("/api/dashboard/best-sellers");
+async function fetchBestSellers(
+  sortBy: BestSellerSort,
+): Promise<BestSellerItem[]> {
+  const res = await fetch(
+    `/api/dashboard/best-sellers?sort=${encodeURIComponent(sortBy)}`,
+  );
   if (!res.ok) {
     throw new Error(`베스트셀러 조회 실패 (${res.status})`);
   }
@@ -29,9 +36,9 @@ export function useDashboardSummary() {
   });
 }
 
-export function useBestSellers() {
+export function useBestSellers(sortBy: BestSellerSort = "quantity") {
   return useQuery({
-    queryKey: queryKeys.bestSellers,
-    queryFn: fetchBestSellers,
+    queryKey: queryKeys.bestSellersBySort(sortBy),
+    queryFn: () => fetchBestSellers(sortBy),
   });
 }

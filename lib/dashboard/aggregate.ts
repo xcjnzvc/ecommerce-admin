@@ -8,6 +8,8 @@ export interface SalesSummary {
 export interface DailySales {
   date: string;
   sales: number;
+  /** 주별 집계 시 주 종료일(일요일) YYYY-MM-DD */
+  weekEnd?: string;
 }
 
 function toTimestamp(value: Date | string): number {
@@ -61,6 +63,14 @@ export function calcGrowthRate(current: number, previous: number): number {
   return ((current - previous) / previous) * 100;
 }
 
+function mapToSortedSales(
+  map: Map<string, number>,
+): DailySales[] {
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, sales]) => ({ date, sales }));
+}
+
 /** 날짜별 sales 합산 → SalesTrendChart용 { date, sales }[] (오름차순) */
 export function groupByDate(orders: Order[]): DailySales[] {
   const map = new Map<string, number>();
@@ -70,7 +80,58 @@ export function groupByDate(orders: Order[]): DailySales[] {
     map.set(key, (map.get(key) ?? 0) + order.total_price);
   }
 
-  return Array.from(map.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, sales]) => ({ date, sales }));
+  return mapToSortedSales(map);
+}
+
+/** 해당 날짜가 속한 주(월~일)의 월요일을 YYYY-MM-DD로 반환 */
+export function toWeekKey(createdAt: string): string {
+  const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return createdAt.slice(0, 10);
+
+  const day = d.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff);
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, "0");
+  const dayNum = String(monday.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dayNum}`;
+}
+
+/** YYYY-MM-DD에 days를 더한 날짜 키 반환 */
+function addDaysToDateKey(dateKey: string, days: number): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  if (!y || !m || !d) return dateKey;
+  const next = new Date(y, m - 1, d + days);
+  const yy = next.getFullYear();
+  const mm = String(next.getMonth() + 1).padStart(2, "0");
+  const dd = String(next.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+/** 주별 sales 합산 (date = 월요일, weekEnd = 일요일) */
+export function groupByWeek(orders: Order[]): DailySales[] {
+  const map = new Map<string, number>();
+
+  for (const order of orders) {
+    const key = toWeekKey(order.created_at);
+    map.set(key, (map.get(key) ?? 0) + order.total_price);
+  }
+
+  return mapToSortedSales(map).map((point) => ({
+    ...point,
+    weekEnd: addDaysToDateKey(point.date, 6),
+  }));
+}
+
+/** 월별 sales 합산 (키 = YYYY-MM) */
+export function groupByMonth(orders: Order[]): DailySales[] {
+  const map = new Map<string, number>();
+
+  for (const order of orders) {
+    const dayKey = toDateKey(order.created_at);
+    const key = dayKey.slice(0, 7);
+    map.set(key, (map.get(key) ?? 0) + order.total_price);
+  }
+
+  return mapToSortedSales(map);
 }

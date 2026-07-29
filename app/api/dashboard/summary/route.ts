@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   calcGrowthRate,
   filterByDateRange,
-  groupByDate,
   sumSales,
 } from "@/lib/dashboard/aggregate";
+import { fetchSalesTrendFromRpc } from "@/lib/dashboard/sales-trend";
 import {
   hasCafe24OrdersInDb,
   listOrdersFromDb,
@@ -81,15 +81,17 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const { searchParams } = new URL(req.url);
 
+  // 카드/상태/채널용 — 전월 1일부터면 충분 (매출 추이는 RPC)
   const defaultStart = startOfMonth(
     new Date(now.getFullYear(), now.getMonth() - 1, 1),
   );
   const startDate = searchParams.get("start_date") ?? toDateParam(defaultStart);
   const endDate = searchParams.get("end_date") ?? toDateParam(now);
 
-  const [orders, cafe24Available] = await Promise.all([
+  const [orders, cafe24Available, salesTrend] = await Promise.all([
     listOrdersFromDb({ startDate, endDate }),
     hasCafe24OrdersInDb(),
+    fetchSalesTrendFromRpc(),
   ]);
 
   const todayStart = startOfDay(now);
@@ -148,10 +150,6 @@ export async function GET(req: NextRequest) {
       return acc;
     },
     { cafe24: 0, shopify: 0 } as Record<"cafe24" | "shopify", number>,
-  );
-
-  const salesTrend = groupByDate(
-    filterByDateRange(orders, monthStart, todayEnd),
   );
 
   return NextResponse.json({

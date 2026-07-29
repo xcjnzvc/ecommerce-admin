@@ -5,8 +5,18 @@ import Link from "next/link";
 import { Download, ChevronRight } from "lucide-react";
 import { type Order } from "@/lib/orders/types";
 import { useOrders } from "@/lib/orders/queries";
+import PillTabs from "@/app/components/PillTabs";
 
 const DISPLAY_LIMIT = 6;
+
+const ORDER_TABS = [
+  { label: "전체", value: "전체" },
+  { label: "결제완료", value: "결제완료" },
+  { label: "배송중", value: "배송중" },
+  { label: "환불", value: "환불" },
+] as const;
+
+type OrderTab = (typeof ORDER_TABS)[number]["value"];
 
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -60,7 +70,7 @@ const getStatusColor = (status: string) => {
 
 export default function LatestOrders() {
   const { data: orders = [], isLoading } = useOrders();
-  const [selectedTab, setSelectedTab] = useState("전체");
+  const [selectedTab, setSelectedTab] = useState<OrderTab>("전체");
 
   const filteredOrders = orders.filter((order) => {
     if (selectedTab === "결제완료") return order.status === "결제완료";
@@ -71,6 +81,7 @@ export default function LatestOrders() {
   });
 
   const displayedOrders = filteredOrders.slice(0, DISPLAY_LIMIT);
+  const emptyRowCount = Math.max(0, DISPLAY_LIMIT - displayedOrders.length);
 
   return (
     <div className="bg-white p-8 rounded-3xl border border-[#e2e2e2] w-full">
@@ -85,26 +96,19 @@ export default function LatestOrders() {
           </h2>
         </div>
         <div className="flex items-center gap-2">
-          <div className="bg-gray-100 p-1 rounded-full flex text-[12px] font-medium text-gray-500">
-            {["전체", "결제완료", "배송중", "환불"].map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setSelectedTab(tab)}
-                className={`px-4 py-1.5 rounded-full ${tab === selectedTab ? "bg-white shadow-sm text-gray-900" : ""}`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
+          <PillTabs
+            options={ORDER_TABS}
+            value={selectedTab}
+            onChange={setSelectedTab}
+          />
           <button className="p-2 border border-gray-200 rounded-full hover:bg-gray-50">
             <Download size={16} className="text-gray-600" />
           </button>
         </div>
       </div>
 
-      {/* 테이블 */}
-      <table className="w-full text-sm">
+      {/* 테이블 — 항상 DISPLAY_LIMIT행 높이 유지 */}
+      <table className="w-full text-sm table-fixed">
         <thead className="text-gray-400 border-b border-gray-100">
           <tr className="text-left">
             <th className="pb-4 font-medium">주문번호</th>
@@ -117,45 +121,63 @@ export default function LatestOrders() {
         </thead>
         <tbody className="divide-y divide-gray-50">
           {isLoading ? (
-            <tr>
-              <td colSpan={6} className="py-10 text-center text-gray-400">
-                주문 데이터를 불러오는 중...
-              </td>
-            </tr>
-          ) : displayedOrders.length === 0 ? (
-            <tr>
-              <td colSpan={6} className="py-10 text-center text-gray-400">
-                표시할 주문이 없습니다.
-              </td>
-            </tr>
-          ) : (
-            displayedOrders.map((order) => (
-              <tr
-                key={order.id}
-                className="text-gray-800 hover:bg-gray-50/50 transition-colors"
-              >
-                <td className="py-5 font-medium">{order.id}</td>
-                <td className="py-5 text-gray-600">{formatProductLabel(order)}</td>
-                <td className="py-5">
-                  <span className="bg-gray-100 px-2 py-1 rounded-md text-[11px] text-gray-600 font-medium">
-                    {channelLabel(order.channel)}
-                  </span>
-                </td>
-                <td className="py-5 font-bold text-gray-900">
-                  {order.total_price.toLocaleString()}원
-                </td>
-                <td className="py-5">
-                  <span
-                    className={`px-2 py-1 rounded-md text-[11px] font-medium ${getStatusColor(order.status)}`}
-                  >
-                    {order.status}
-                  </span>
-                </td>
-                <td className="py-5 text-right text-gray-400">
-                  {formatRelativeTime(order.created_at)}
+            Array.from({ length: DISPLAY_LIMIT }, (_, i) => (
+              <tr key={`loading-${i}`}>
+                <td colSpan={6} className="py-5 text-center text-gray-400">
+                  {i === 2 ? "주문 데이터를 불러오는 중..." : "\u00A0"}
                 </td>
               </tr>
             ))
+          ) : displayedOrders.length === 0 ? (
+            Array.from({ length: DISPLAY_LIMIT }, (_, i) => (
+              <tr key={`empty-state-${i}`}>
+                <td colSpan={6} className="py-5 text-center text-gray-400">
+                  {i === 2 ? "표시할 주문이 없습니다." : "\u00A0"}
+                </td>
+              </tr>
+            ))
+          ) : (
+            <>
+              {displayedOrders.map((order) => (
+                <tr
+                  key={order.id}
+                  className="text-gray-800 hover:bg-gray-50/50 transition-colors"
+                >
+                  <td className="py-5 font-medium truncate">{order.id}</td>
+                  <td className="py-5 text-gray-600 truncate">
+                    {formatProductLabel(order)}
+                  </td>
+                  <td className="py-5">
+                    <span className="bg-gray-100 px-2 py-1 rounded-md text-[11px] text-gray-600 font-medium">
+                      {channelLabel(order.channel)}
+                    </span>
+                  </td>
+                  <td className="py-5 font-bold text-gray-900">
+                    {order.total_price.toLocaleString()}원
+                  </td>
+                  <td className="py-5">
+                    <span
+                      className={`px-2 py-1 rounded-md text-[11px] font-medium ${getStatusColor(order.status)}`}
+                    >
+                      {order.status}
+                    </span>
+                  </td>
+                  <td className="py-5 text-right text-gray-400">
+                    {formatRelativeTime(order.created_at)}
+                  </td>
+                </tr>
+              ))}
+              {Array.from({ length: emptyRowCount }, (_, i) => (
+                <tr key={`pad-${i}`} aria-hidden>
+                  <td className="py-5">&nbsp;</td>
+                  <td className="py-5">&nbsp;</td>
+                  <td className="py-5">&nbsp;</td>
+                  <td className="py-5">&nbsp;</td>
+                  <td className="py-5">&nbsp;</td>
+                  <td className="py-5">&nbsp;</td>
+                </tr>
+              ))}
+            </>
           )}
         </tbody>
       </table>
