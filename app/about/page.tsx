@@ -24,40 +24,36 @@ const overviewMeta = [
   },
 ];
 
-const screenshots = [
+const coreFeatures: {
+  title: string;
+  desc: string;
+  screenshot?: { src: string; caption: string };
+}[] = [
   {
-    title: "Dashboard",
-    caption: "매출·주문 현황 요약",
-    src: "/dashboard.png",
-  },
-  {
-    title: "상품 등록",
-    caption: "멀티채널 등록 폼",
-    src: "/product.png",
-  },
-  {
-    title: "재고 관리",
-    caption: "SSOT 기반 재고·동기화 상태",
-    src: "/inventory.png",
-  },
-];
-
-const coreFeatures = [
-  {
-    badge: "핵심",
-    badgeColor: "bg-emerald-50 text-emerald-700",
     title: "멀티채널 상품 등록",
     desc: "하나의 폼에서 등록하면 Supabase → Cafe24 → Shopify 순으로 처리하고, 채널별 상품번호를 다시 DB에 저장합니다. 등록·수정 플로우는 분리하되 공용 섹션·훅으로 중복을 줄였습니다.",
+    screenshot: {
+      src: "/product.png",
+      caption: "멀티채널 등록 폼",
+    },
   },
   {
-    badge: "핵심",
-    badgeColor: "bg-violet-50 text-violet-700",
     title: "재고 동기화 (products.stock SSOT)",
     desc: "Cafe24 실재고를 기준으로 매일 Cron이 products.stock을 갱신한 뒤 Shopify에 미러링합니다. 관리자 수동 조정도 동일 경로로 전 채널에 반영하고, 변경 이력을 남깁니다.",
+    screenshot: {
+      src: "/inventory.png",
+      caption: "SSOT 기반 재고·동기화 상태",
+    },
   },
   {
-    badge: "핵심",
-    badgeColor: "bg-blue-50 text-blue-700",
+    title: "대시보드",
+    desc: "매출 추이, 베스트셀러, 최근 주문을 한 화면에서 확인합니다. 채널별 운영 현황을 빠르게 파악하기 위한 요약 뷰입니다.",
+    screenshot: {
+      src: "/dashboard.png",
+      caption: "매출·주문 현황 요약",
+    },
+  },
+  {
     title: "Cafe24 OAuth 자동 갱신",
     desc: "access/refresh 토큰을 Supabase에 저장하고, axios 인터셉터에서 만료를 확인합니다. 핵심은 동시 요청 시 refresh_token race condition을 Promise lock으로 막아, 갱신이 한 번만 일어나도록 한 점입니다.",
   },
@@ -75,10 +71,6 @@ const otherFeatures = [
   {
     title: "주문 관리",
     desc: "Shopify 웹훅 실시간 반영, Cafe24 수동 동기화",
-  },
-  {
-    title: "대시보드",
-    desc: "매출 추이, 베스트셀러, 최근 주문",
   },
 ];
 
@@ -156,7 +148,6 @@ const designDecisions = [
 
 const troubleshooting = [
   {
-    highlight: true,
     label: "동시 요청 시 Cafe24 refresh_token race condition",
     problem:
       "여러 API 요청이 거의 동시에 들어올 때만 간헐적으로 카페24 인증이 실패했습니다. 단일 요청으로는 재현되지 않았습니다.",
@@ -165,7 +156,6 @@ const troubleshooting = [
     fix: "모듈 스코프의 Promise 변수로 갱신 로직을 감쌌습니다. 이미 갱신이 진행 중이면 새 갱신을 시작하지 않고 기존 Promise를 공유합니다. 동시 요청이 몰려도 refresh는 한 번만 실행됩니다.",
   },
   {
-    highlight: false,
     label: "Cafe24 이미지 API의 상대 경로 요구사항",
     problem:
       "이미지 업로드 응답을 상품 이미지 필드에 그대로 넣으면 값이 유효하지 않다고 처리됐습니다.",
@@ -174,7 +164,6 @@ const troubleshooting = [
     fix: "업로드 응답에서 호스트를 제외한 상대 경로만 추출해 상품 이미지 필드에 전달하도록 수정했습니다.",
   },
   {
-    highlight: false,
     label: "동기화 실패 로그가 해결 후에도 남는 문제",
     problem:
       "실패는 sync_error_log에 남기지만, 이후 동기화가 성공해도 화면의 오류 상태가 자동으로 풀리지 않을 수 있었습니다.",
@@ -183,7 +172,6 @@ const troubleshooting = [
     fix: "동기화 성공 분기에서 해당 상품의 미해결 로그를 찾아 자동 resolved 처리하도록 추가했습니다.",
   },
   {
-    highlight: false,
     label: "inventory 테이블과 동기화 로직의 충돌",
     problem:
       "상품은 저장되는데 재고만 틀리거나, Cron이 읽는 값과 등록 시 쓰는 저장소가 달랐습니다.",
@@ -318,53 +306,35 @@ export default function AboutPage() {
 
       <hr className="border-gray-100 mb-16" />
 
-      {/* 2. 실제 화면 */}
-      <section className="mb-16">
-        <SectionLabel>실제 서비스 화면</SectionLabel>
-        <div className="flex flex-col gap-8">
-          {screenshots.map((shot) => (
-            <div key={shot.title} className="flex flex-col gap-3">
-              <div className="max-h-[500px] overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={shot.src}
-                  alt={shot.title}
-                  className="w-full object-cover object-top"
-                />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">
-                  {shot.title}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">{shot.caption}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <hr className="border-gray-100 mb-16" />
-
-      {/* 3. 핵심 기능 */}
+      {/* 2. 핵심 기능 */}
       <section className="mb-16">
         <SectionLabel>핵심 기능</SectionLabel>
-        <div className="flex flex-col gap-4 mb-10">
+        <div className="flex flex-col gap-10 mb-10">
           {coreFeatures.map((item) => (
-            <div
-              key={item.title}
-              className="border border-gray-100 rounded-xl px-5 py-6"
-            >
-              <span
-                className={`inline-block text-xs font-semibold px-2 py-1 rounded-full ${item.badgeColor}`}
-              >
-                {item.badge}
-              </span>
-              <h3 className="font-semibold text-gray-900 text-lg mt-3 mb-2">
-                {item.title}
-              </h3>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                {item.desc}
-              </p>
+            <div key={item.title} className="flex flex-col gap-4">
+              <div>
+                <h3 className="font-semibold text-gray-900 text-lg mb-2">
+                  {item.title}
+                </h3>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  {item.desc}
+                </p>
+              </div>
+              {item.screenshot && (
+                <div className="flex flex-col gap-2">
+                  <div className="max-h-[500px] overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.screenshot.src}
+                      alt={item.title}
+                      className="w-full object-cover object-top"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {item.screenshot.caption}
+                  </p>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -489,37 +459,11 @@ export default function AboutPage() {
           {troubleshooting.map((item) => (
             <div
               key={item.label}
-              className={`rounded-xl px-5 py-5 ${
-                item.highlight
-                  ? "border-2 border-gray-900 bg-gray-50"
-                  : "border border-gray-100"
-              }`}
+              className="border border-gray-100 rounded-xl px-5 py-5"
             >
-              <div className="flex flex-wrap items-center gap-2 mb-4">
-                {item.highlight && (
-                  <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-gray-900 text-white">
-                    핵심 차별점
-                  </span>
-                )}
-                <p className="font-semibold text-gray-900 text-sm">
-                  {item.label}
-                </p>
-              </div>
-              {item.highlight && (
-                <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-2 text-xs text-gray-600">
-                  <span className="rounded-lg bg-white border border-gray-200 px-3 py-2">
-                    동시 요청 발생
-                  </span>
-                  <span className="hidden sm:inline text-gray-300">↓</span>
-                  <span className="rounded-lg bg-white border border-gray-200 px-3 py-2">
-                    refresh_token race condition
-                  </span>
-                  <span className="hidden sm:inline text-gray-300">↓</span>
-                  <span className="rounded-lg bg-white border border-gray-200 px-3 py-2 font-semibold text-gray-900">
-                    Promise lock 적용
-                  </span>
-                </div>
-              )}
+              <p className="font-semibold text-gray-900 text-sm mb-4">
+                {item.label}
+              </p>
               <div className="flex flex-col gap-3">
                 {[
                   {
