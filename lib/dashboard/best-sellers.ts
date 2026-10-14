@@ -92,9 +92,7 @@ export function aggregateBestSellers(
   return Array.from(map.values())
     .sort((a, b) => {
       const primary =
-        sortBy === "revenue"
-          ? b.revenue - a.revenue
-          : b.quantity - a.quantity;
+        sortBy === "revenue" ? b.revenue - a.revenue : b.quantity - a.quantity;
       if (primary !== 0) return primary;
       return sortBy === "revenue"
         ? b.quantity - a.quantity
@@ -152,30 +150,48 @@ export async function enrichBestSellersWithImages(
   const numericIds = Array.from(
     new Set(
       items
-        .map((item) =>
-          item.productId == null ? null : Number(item.productId),
-        )
+        .map((item) => (item.productId == null ? null : Number(item.productId)))
         .filter((id): id is number => id != null && Number.isFinite(id)),
     ),
   );
 
   const supabase = createAdminClient();
-  let rows: ProductMetaRow[] = [];
+  const rows: ProductMetaRow[] = [];
   const selectCols =
     "name, images, category_nos, cafe24_product_no, shopify_product_id";
 
   if (numericIds.length > 0) {
+    // PostgreSQL integer 범위
+    const MAX_INT32 = 2_147_483_647;
+
+    const cafe24Ids = numericIds.filter(
+      (id) => Number.isInteger(id) && id >= 0 && id <= MAX_INT32,
+    );
+
+    // Cafe24 상품 조회
+    if (cafe24Ids.length > 0) {
+      const { data, error } = await supabase
+        .from("products")
+        .select(selectCols)
+        .in("cafe24_product_no", cafe24Ids);
+
+      if (error) {
+        console.error("Cafe24 상품 메타 조회 실패:", error);
+      } else {
+        rows.push(...((data ?? []) as ProductMetaRow[]));
+      }
+    }
+
+    // Shopify 상품 조회
     const { data, error } = await supabase
       .from("products")
       .select(selectCols)
-      .or(
-        `cafe24_product_no.in.(${numericIds.join(",")}),shopify_product_id.in.(${numericIds.join(",")})`,
-      );
+      .in("shopify_product_id", numericIds);
 
     if (error) {
-      console.error("베스트셀러 상품 메타 조회 실패:", error);
+      console.error("Shopify 상품 메타 조회 실패:", error);
     } else {
-      rows = (data ?? []) as ProductMetaRow[];
+      rows.push(...((data ?? []) as ProductMetaRow[]));
     }
   }
 
@@ -184,8 +200,7 @@ export async function enrichBestSellersWithImages(
       if (item.productId == null) return true;
       const id = Number(item.productId);
       return !rows.some(
-        (row) =>
-          row.cafe24_product_no === id || row.shopify_product_id === id,
+        (row) => row.cafe24_product_no === id || row.shopify_product_id === id,
       );
     })
     .map((item) => item.name);
@@ -221,7 +236,8 @@ export async function enrichBestSellersWithImages(
       image: firstImage(row.images),
       categoryNos: normalizeCategoryNos(row.category_nos),
     };
-    if (row.cafe24_product_no != null) byCafe24.set(row.cafe24_product_no, meta);
+    if (row.cafe24_product_no != null)
+      byCafe24.set(row.cafe24_product_no, meta);
     if (row.shopify_product_id != null) {
       byShopify.set(row.shopify_product_id, meta);
     }

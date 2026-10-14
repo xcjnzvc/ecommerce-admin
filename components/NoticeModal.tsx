@@ -1,32 +1,43 @@
 "use client";
 
-import React from "react";
-import { Info, X, AlertCircle } from "lucide-react";
+import React, { useSyncExternalStore } from "react";
+import { X, AlertCircle } from "lucide-react";
 
 interface NoticeModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export default function NoticeModal({ isOpen, onClose }: NoticeModalProps) {
-  // 1. 오늘 날짜 확인 (서버사이드 렌더링 방지)
-  const isHiddenToday = () => {
-    if (typeof window === "undefined") return false;
-    const today = new Date().toISOString().split("T")[0];
-    return localStorage.getItem("noticeModalHideUntil") === today;
-  };
+const emptySubscribe = () => () => {};
 
-  // 2. 모달을 보여줄지 결정:
-  // 부모가 열라고 했어도(isOpen), 오늘 안 보기(isHiddenToday)라면 표시하지 않음
-  const shouldShow = isOpen && !isHiddenToday();
+function useIsClient() {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true, // 클라이언트
+    () => false, // 서버 + hydration 첫 렌더
+  );
+}
+
+function getToday() {
+  // toISOString은 UTC 기준이라 한국에선 00~09시에 날짜가 하루 전으로 나옴 → 로컬 기준으로
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export default function NoticeModal({ isOpen, onClose }: NoticeModalProps) {
+  const isClient = useIsClient();
+
+  if (!isClient || !isOpen) return null;
+
+  const isHiddenToday =
+    localStorage.getItem("noticeModalHideUntil") === getToday();
+  if (isHiddenToday) return null;
 
   const handleDontShowToday = () => {
-    const today = new Date().toISOString().split("T")[0];
-    localStorage.setItem("noticeModalHideUntil", today);
+    localStorage.setItem("noticeModalHideUntil", getToday());
     onClose();
   };
-
-  if (!shouldShow) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-200">

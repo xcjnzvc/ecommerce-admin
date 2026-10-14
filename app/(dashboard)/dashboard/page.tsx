@@ -2,10 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import {
-  type DashboardSummary,
-  type SalesCardTypes,
-} from "@/types/dashboard";
+import { type DashboardSummary, type SalesCardTypes } from "@/types/dashboard";
 import { useDashboardSummary } from "@/lib/dashboard/queries";
 import SalesCard from "./_components/SalesCard";
 import SalesTrendChart from "./_components/SalesTrendChart";
@@ -17,6 +14,7 @@ import ReviewStats from "./_components/ReviewStats";
 import InfluencerCampaign from "./_components/InfluencerCampaign";
 import LatestOrders from "./_components/LatestOrders";
 import NoticeModal from "@/components/NoticeModal";
+import AiSalesAnalysis from "@/app/components/AiSalesAnalysis";
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -161,6 +159,7 @@ export default function DashboardPage() {
       </div>
 
       <NoticeModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <AiSalesAnalysis />
     </div>
   );
 }

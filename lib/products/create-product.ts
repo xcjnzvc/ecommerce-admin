@@ -20,7 +20,10 @@ export async function createProduct(
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  const fullDescription = buildFullDescription(data.description, data.legalInfo);
+  const fullDescription = buildFullDescription(
+    data.description,
+    data.legalInfo,
+  );
   const finalStatus = submitStatus ?? data.status ?? "판매중";
   const modifierEmail = session?.user.email ?? null;
 
@@ -40,7 +43,26 @@ export async function createProduct(
   };
 
   // #region agent log
-  fetch('http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'69fb1b'},body:JSON.stringify({sessionId:'69fb1b',location:'create-product.ts:beforeInsert',message:'createProduct payload images',data:{productName:data.name,paramImages:images,valuesImages:data.images??[],payloadImages:payload.images},timestamp:Date.now(),hypothesisId:'B-C'})}).catch(()=>{});
+  fetch("http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "69fb1b",
+    },
+    body: JSON.stringify({
+      sessionId: "69fb1b",
+      location: "create-product.ts:beforeInsert",
+      message: "createProduct payload images",
+      data: {
+        productName: data.name,
+        paramImages: images,
+        valuesImages: data.images ?? [],
+        payloadImages: payload.images,
+      },
+      timestamp: Date.now(),
+      hypothesisId: "B-C",
+    }),
+  }).catch(() => {});
   // #endregion
 
   const { data: inserted, error } = await supabase
@@ -53,7 +75,26 @@ export async function createProduct(
   const insertedRowId = inserted.id as string;
 
   // #region agent log
-  fetch('http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'69fb1b'},body:JSON.stringify({sessionId:'69fb1b',location:'create-product.ts:afterInsert',message:'inserted product images from DB',data:{productId:insertedRowId,productName:data.name,insertedImages:inserted.images??null,insertedImagesType:typeof inserted.images},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+  fetch("http://127.0.0.1:7576/ingest/47ab9bd0-3423-4f30-bd64-318d03377f9f", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "69fb1b",
+    },
+    body: JSON.stringify({
+      sessionId: "69fb1b",
+      location: "create-product.ts:afterInsert",
+      message: "inserted product images from DB",
+      data: {
+        productId: insertedRowId,
+        productName: data.name,
+        insertedImages: inserted.images ?? null,
+        insertedImagesType: typeof inserted.images,
+      },
+      timestamp: Date.now(),
+      hypothesisId: "C",
+    }),
+  }).catch(() => {});
   // #endregion
 
   if (data.channels.cafe24) {
@@ -91,15 +132,6 @@ export async function createProduct(
           cafe24_synced_at: new Date().toISOString(),
         })
         .eq("id", insertedRowId);
-
-      await fetch(`/api/products/${insertedRowId}/stock`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stock: data.stock,
-          modifier: modifierEmail,
-        }),
-      });
     }
   }
 
