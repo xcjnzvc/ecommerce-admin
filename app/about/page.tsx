@@ -16,11 +16,28 @@ const scaleCards = [
 ];
 
 const overviewMeta = [
-  { label: "개발 기간", value: "2026.07 ~ 진행중" },
+  { label: "개발 기간", value: "2026.07 ~ 2026.08" },
   { label: "개발 인원", value: "1인 개발" },
   {
     label: "담당 범위",
     value: "기획 · UI/UX · Frontend · Backend · Database · API 연동 · 배포",
+  },
+];
+
+const demoVideos = [
+  {
+    title: "로그인 및 인증",
+    description:
+      "서비스 로그인 과정과 인증 기능의 실제 동작을 확인할 수 있습니다.",
+    videoId: "cQKRRruKEr4",
+    category: "Authentication",
+  },
+  {
+    title: "멀티채널 상품 등록",
+    description:
+      "상품 정보를 입력하고 등록하는 과정을 실제 화면으로 확인할 수 있습니다.",
+    videoId: "QXBwhDGiszU",
+    category: "Product Management",
   },
 ];
 
@@ -299,6 +316,73 @@ export default function AboutPage() {
               <span className="text-sm text-gray-600 leading-relaxed">
                 {item.value}
               </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <hr className="border-gray-100 mb-16" />
+
+      {/* 프로젝트 시연 영상 */}
+      <section className="mb-16">
+        <SectionLabel>프로젝트 시연 영상</SectionLabel>
+
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-gray-900 mb-3">
+            실제 서비스 동작 살펴보기
+          </h2>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            주요 기능의 실제 동작 과정을 영상으로 확인할 수 있습니다. 로그인부터
+            상품 등록까지 구현된 기능을 소개합니다.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {demoVideos.map((video, index) => (
+            <div
+              key={video.videoId}
+              className="group overflow-hidden rounded-xl border border-gray-100 bg-white transition-colors hover:border-gray-200"
+            >
+              <div className="relative aspect-video overflow-hidden bg-gray-50">
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${video.videoId}`}
+                  title={`${video.title} 시연 영상`}
+                  className="absolute inset-0 h-full w-full"
+                  loading="lazy"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                />
+              </div>
+
+              <div className="p-5">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <span className="text-[10px] font-semibold tracking-widest text-gray-400 uppercase">
+                    {video.category}
+                  </span>
+                  <span className="text-[10px] font-medium text-gray-400">
+                    0{index + 1}
+                  </span>
+                </div>
+
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">
+                  {video.title}
+                </h3>
+
+                <p className="text-xs text-gray-500 leading-relaxed min-h-[36px]">
+                  {video.description}
+                </p>
+
+                <a
+                  href={`https://www.youtube.com/watch?v=${video.videoId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 mt-4 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
+                >
+                  YouTube에서 보기
+                  <span aria-hidden="true">↗</span>
+                </a>
+              </div>
             </div>
           ))}
         </div>
